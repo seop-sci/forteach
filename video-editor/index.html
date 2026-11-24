@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>간단 영상 편집기</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+/* VOICE: 조용하고 정확한 작업 도구, 장식 없이 손에 익는 편집기
+   IDEA: GoldWave 같은 오디오 편집기의 검은 바탕 초록 파형 위에서 영상을 자른다
+   PICTURE: 영상 미리보기와 그 아래 넓은 파형 타임라인이 화면의 주인공
+   COLOUR and TYPE: 어두운 작업대, 초록 파형, 파란 선택, 빨간 재생선, 보라 자막 블록 / Noto Sans KR + JetBrains Mono 타임코드
+   LAYOUT: 위 미리보기와 오른쪽 자막 목록, 아래 화면 폭 전체 타임라인 */
+:root{color-scheme:dark;--bg:#111315;--panel:#1a1d21;--line:#2b3037;--ink:#e9ecef;--dim:#98a1ab;--wave:#8be36a;--acc:#4f9dff;--cut:#ff6b5a;--sub:#b07cf0}
+*{box-sizing:border-box;min-width:0}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 "Noto Sans KR",system-ui,sans-serif;overflow-x:clip}
+button,.btn{font:inherit;font-size:14px;color:var(--ink);background:#252a30;border:1px solid #363c45;border-radius:8px;height:38px;padding:0 13px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+button:hover,.btn:hover{background:#2e343c}
+button:focus-visible,.btn:focus-within,textarea:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+button:disabled{opacity:.4;cursor:default}
+.primary{background:var(--acc);border-color:var(--acc);color:#fff;font-weight:700}
+.primary:hover{background:#3d8af0}
+header{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:10px max(2vw,12px);border-bottom:1px solid var(--line);background:#15181b}
+.logo{font-weight:900;font-size:17px;margin-right:10px;letter-spacing:-.02em}
+.logo i{font-style:normal;color:var(--wave)}
+.sp{flex:1}
+main{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:14px;padding:14px max(2vw,12px) 0}
+.stagebox{position:relative;height:clamp(200px,46vh,640px);background:#000;border-radius:10px;display:flex;align-items:center;justify-content:center;overflow:hidden}
+.stage{position:relative}
+.stage video{display:block;width:100%;height:100%;background:#000}
+.cap{position:absolute;left:50%;bottom:6%;transform:translateX(-50%);max-width:90%;width:max-content;text-align:center;white-space:pre-wrap;word-break:keep-all;line-height:1.3;font-weight:700;padding:.1em .4em;paint-order:stroke fill;pointer-events:none;border-radius:.15em}
+.cap.top{top:6%;bottom:auto}.cap.middle{top:50%;bottom:auto;transform:translate(-50%,-50%)}
+.empty{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center;padding:20px;background:radial-gradient(ellipse at 50% 40%,#1c2420,#0b0d0f 70%);border:2px dashed #2f3a33;border-radius:10px}
+.empty svg{width:min(340px,70%);height:auto}
+.empty h2{margin:0;font-size:22px;font-weight:900}
+.empty p{margin:0;color:var(--dim);max-width:36em}
+.empty.over{border-color:var(--wave)}
+.empty[hidden]{display:none}
+aside>*{flex:none}
+.tools label{white-space:nowrap}
+.spd{display:inline-flex;gap:6px}.spd select{height:38px}
+.mode{font-size:12px;color:var(--wave);margin:0}
+.transport{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:10px 0}
+.tc{font:500 15px "JetBrains Mono",monospace;padding:0 8px;color:#cfd5db}
+.dim{color:var(--dim);font-size:13px}
+aside{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:10px;max-height:calc(clamp(200px,46vh,640px) + 58px);overflow:auto}
+aside h2,aside h3{margin:0;font-size:15px;font-weight:700}
+aside h3{margin-top:6px;padding-top:10px;border-top:1px solid var(--line)}
+#subList{display:flex;flex-direction:column;gap:8px}
+.sub{background:#22262b;border:1px solid #30363e;border-radius:8px;padding:8px;cursor:pointer}
+.sub.on{border-color:var(--sub);box-shadow:0 0 0 1px var(--sub) inset}
+.sh{display:flex;align-items:center;gap:4px;flex-wrap:wrap}
+.sh .num{background:var(--sub);color:#1a0d29;font-weight:900;font-size:12px;border-radius:5px;padding:0 6px}
+.sh .tm{font:500 12px "JetBrains Mono",monospace;color:#c9cfd6}
+.sh button{height:28px;padding:0 7px;font-size:12px}
+.sh .x{color:#ff9b8f}
+textarea{width:100%;margin-top:6px;resize:vertical;font:16px/1.4 "Noto Sans KR",sans-serif;color:var(--ink);background:#15181b;border:1px solid #363c45;border-radius:6px;padding:6px 8px}
+.grid2{display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px 10px;align-items:center;font-size:14px}
+select{font:inherit;font-size:14px;color:var(--ink);background:#252a30;border:1px solid #363c45;border-radius:8px;height:34px;padding:0 8px}
+input[type=color]{width:44px;height:30px;border:0;background:none;padding:0}
+input[type=range]{width:100%;accent-color:var(--acc)}
+.tlsec{padding:12px max(2vw,12px) 24px}
+.tools{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:8px}
+.tools label{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--dim);min-width:200px}
+#tl{display:block;width:100%;height:170px;border-radius:8px 8px 0 0;touch-action:none;cursor:crosshair}
+.hs{overflow-x:auto;height:14px;background:#15181b;border-radius:0 0 8px 8px}
+#spacer{height:1px}
+.help{color:var(--dim);font-size:13px;margin:8px 0 0}
+.help b{color:#cfd5db;font-weight:500}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.65);display:flex;align-items:center;justify-content:center;z-index:9;padding:16px}
+.modal[hidden]{display:none}
+.box{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:20px;width:min(440px,100%);display:flex;flex-direction:column;gap:10px}
+.box h3{margin:0}
+.bar{height:10px;background:#2a2f35;border-radius:6px;overflow:hidden}
+.bar i{display:block;height:100%;width:0;background:var(--wave)}
+.toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:#2b3138;border:1px solid #3d444d;padding:9px 16px;border-radius:8px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:10;max-width:90vw}
+.toast.on{opacity:1}
+@media(max-width:860px){main{grid-template-columns:minmax(0,1fr)}aside{max-height:none}}
+@media(max-width:600px){.stagebox{height:34vh}header .logo{width:100%}}
+@media(prefers-reduced-motion:reduce){.toast{transition:none}}
+</style>
+</head>
+<body>
+<header>
+  <span class="logo">컷<i>&amp;</i>자막</span>
+  <label class="btn primary">영상 열기<input type="file" id="fileIn" accept="video/*,.mkv,.mov" hidden></label>
+  <button id="undoBtn" title="Ctrl+Z">되돌리기</button>
+  <button id="redoBtn" title="Ctrl+Y">다시 실행</button>
+  <span class="sp"></span>
+  <label class="btn">SRT 불러오기<input type="file" id="srtIn" accept=".srt,.txt" hidden></label>
+  <button id="srtBtn">SRT 저장</button>
+  <button id="expBtn" class="primary">영상 내보내기</button>
+</header>
+
+<main>
+  <section>
+    <div class="stagebox" id="stagebox">
+      <div class="stage" id="stage"><video id="vid" playsinline preload="auto"></video><div id="cap" class="cap"></div></div>
+      <div class="empty" id="empty">
+        <svg viewBox="0 0 340 120" aria-hidden="true">
+          <rect x="0" y="0" width="340" height="120" rx="12" fill="#0a0d0b"/>
+          <line x1="10" y1="60" x2="330" y2="60" stroke="#25402b"/>
+          <g fill="#8be36a" id="demoWave"></g>
+          <rect x="120" y="8" width="90" height="104" fill="rgba(79,157,255,.25)" stroke="#4f9dff"/>
+          <line x1="250" y1="0" x2="250" y2="120" stroke="#ff4d4d" stroke-width="2"/>
+        </svg>
+        <h2>영상을 여기로 끌어다 놓으세요</h2>
+        <p>또는 위의 <b>영상 열기</b>를 누르세요. 파일은 이 브라우저 안에서만 처리되고 어디에도 올라가지 않아요.</p>
+      </div>
+    </div>
+    <div class="transport">
+      <button id="playBtn" class="primary" style="min-width:92px">재생</button>
+      <button id="playSelBtn">선택 구간 재생</button>
+      <span class="tc" id="tc">00:00.00 / 00:00.00</span>
+      <span class="sp"></span>
+      <span class="dim" id="selInfo"></span>
+    </div>
+  </section>
+
+  <aside>
+    <h2>자막</h2>
+    <button id="addSubBtn" class="primary">자막 추가 (T)</button>
+    <div id="subList"></div>
+    <h3>자막 모양</h3>
+    <div class="grid2">
+      <span>글자 크기</span><input type="range" id="stSize" min="3" max="14" step="0.5" value="6">
+      <span>글자 색</span><input type="color" id="stColor" value="#ffffff">
+      <span>테두리 색</span><input type="color" id="stStroke" value="#000000">
+      <span>위치</span><select id="stPos"><option value="bottom">아래</option><option value="middle">가운데</option><option value="top">위</option></select>
+      <span>배경 상자</span><label><input type="checkbox" id="stBox"> 반투명 검은 상자</label>
+    </div>
+  </aside>
+</main>
+
+<section class="tlsec">
+  <div class="tools">
+    <button id="delBtn">선택 구간 삭제 (Del)</button>
+    <button id="keepBtn">선택 구간만 남기기</button>
+    <button id="splitBtn">재생 위치에서 나누기 (S)</button>
+    <button id="clearSelBtn">선택 해제 (Esc)</button>
+    <span class="spd"><select id="speed" aria-label="배속"><option value="0.5">0.5배</option><option value="0.75">0.75배</option><option value="1" selected>1배</option><option value="1.25">1.25배</option><option value="1.5">1.5배</option><option value="2">2배</option><option value="3">3배</option><option value="4">4배</option></select><button id="speedBtn">배속 적용</button></span>
+    <span class="sp"></span>
+    <label>확대 <input type="range" id="zoom" min="0" max="100" value="0"></label>
+  </div>
+  <canvas id="tl"></canvas>
+  <div class="hs" id="hs"><div id="spacer"></div></div>
+  <p class="help"><b>파형 드래그</b> 구간 선택 &nbsp;|&nbsp; <b>클릭</b> 그 위치로 이동 &nbsp;|&nbsp; <b>[ ]</b> 재생 위치를 선택 시작/끝으로 &nbsp;|&nbsp; <b>스페이스</b> 재생 &nbsp;|&nbsp; <b>Del</b> 선택 삭제 &nbsp;|&nbsp; <b>Ctrl+Z</b> 되돌리기 &nbsp;|&nbsp; <b>배속</b> 구간을 고르고 배속 적용, 선택이 없으면 전체 &nbsp;|&nbsp; <b>휠</b> 확대, Shift+휠 좌우 이동 &nbsp;|&nbsp; 보라색 자막 블록은 끌어서 옮기고 양 끝을 끌어 길이 조절</p>
+</section>
+
+<div class="modal" id="modal" hidden>
+  <div class="box">
+    <h3>영상 내보내는 중</h3>
+    <p class="mode" id="expMode"></p>
+    <p id="expMsg" class="tc" style="margin:0;padding:0">00:00.00</p>
+    <div class="bar"><i id="expBar"></i></div>
+    <p class="dim" style="margin:0" id="expNote"></p>
+    <label class="dim" id="hearRow"><input type="checkbox" id="hear"> 내보내는 동안 소리 듣기</label>
+    <button id="cancelExp">취소</button>
+  </div>
+</div>
+<div id="toast" class="toast"></div>
+
+<script>
+{
+const $=id=>document.getElementById(id);
+const vid=$('vid'),cap=$('cap'),tl=$('tl'),hs=$('hs'),spacer=$('spacer');
+let curFile=null,segs=[],subs=[],starts=[],sel=null,playT=0,cur=0,playing=false,stopAt=null,peaks=null,zoom=1,activeId=null,nextId=1,justAdded=null,fileName='video',drag=null,cancelX=false,exporting=false;
+const PR=100,undoS=[],redoS=[];
+const style={size:6,color:'#ffffff',stroke:'#000000',box:false,pos:'bottom'};
+let actx=null,srcNode=null,spk=null;
+
+// 빈 화면 장식 파형
+{let h='';for(let i=0;i<160;i++){const a=(Math.abs(Math.sin(i*.37)*Math.sin(i*.11))*38+4)*(0.6+0.4*Math.sin(i*.05));h+=`<rect x="${10+i*2}" y="${60-a}" width="1.4" height="${a*2}"/>`}document.getElementById('demoWave').innerHTML=h}
+
+const fmt=t=>{t=Math.max(0,t||0);const m=Math.floor(t/60),s=t-m*60;return String(m).padStart(2,'0')+':'+s.toFixed(2).padStart(5,'0')};
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let tt;const toast=m=>{const e=$('toast');e.textContent=m;e.classList.add('on');clearTimeout(tt);tt=setTimeout(()=>e.classList.remove('on'),2600)};
+const slen=s=>(s.b-s.a)/(s.sp||1);
+const total=()=>segs.reduce((a,s)=>a+slen(s),0);
+function recalc(){starts=[];let o=0;for(const s of segs){s.sp=s.sp||1;starts.push(o);o+=slen(s)}}
+function locate(t){for(let i=segs.length-1;i>=0;i--){if(t>=starts[i]||i===0){const s=segs[i];return{i,src:Math.min(s.b,s.a+Math.max(0,t-starts[i])*s.sp)}}}return{i:0,src:0}}
+
+// 되돌리기
+const snap=()=>JSON.stringify({segs,subs});
+function push(){undoS.push(snap());if(undoS.length>150)undoS.shift();redoS.length=0;btns()}
+function restore(j){const o=JSON.parse(j);segs=o.segs;subs=o.subs;recalc();sel=null;renderSubs();seek(Math.min(playT,total()))}
+function undo(){if(!undoS.length)return;redoS.push(snap());restore(undoS.pop());btns()}
+function redo(){if(!redoS.length)return;undoS.push(snap());restore(redoS.pop());btns()}
+
+// 파일 열기
+async function load(f){
+  if(!f)return;
+  if(!/^video\//.test(f.type)&&!/\.(mp4|webm|mov|mkv|m4v|ogv)$/i.test(f.name)){toast('영상 파일을 골라 주세요');return}
+  pause();curFile=f;fileName=f.name.replace(/\.[^.]+$/,'');
+  if(vid.src)URL.revokeObjectURL(vid.src);
+  vid.src=URL.createObjectURL(f);
+  try{await new Promise((res,rej)=>{vid.onloadedmetadata=res;vid.onerror=rej})}
+  catch(e){toast('이 브라우저에서 열 수 없는 형식이에요. mp4나 webm으로 시도해 주세요.');return}
+  let dur=vid.duration;
+  if(!isFinite(dur)){vid.currentTime=1e9;await new Promise(r=>vid.onseeked=r);vid.onseeked=null;dur=vid.duration}
+  segs=[{a:0,b:dur,sp:1}];subs=[];sel=null;undoS.length=0;redoS.length=0;zoom=1;$('zoom').value=0;activeId=null;
+  recalc();playT=0;cur=0;vid.currentTime=0;$('empty').hidden=true;
+  layout();renderSubs();btns();ui();
+  peaks=null;
+  if(f.size<600e6){
+    toast('소리 파형을 분석하는 중이에요...');
+    try{const buf=await f.arrayBuffer();const oc=new OfflineAudioContext(1,1,44100);const ab=await oc.decodeAudioData(buf);makePeaks(ab);draw();toast('준비 완료! 파형을 드래그해서 자를 구간을 고르세요')}
+    catch(e){toast('소리가 없거나 파형을 읽지 못했어요. 편집은 그대로 할 수 있어요')}
+  }else toast('큰 파일이라 파형 없이 열었어요');
+}
+function makePeaks(ab){
+  const chs=[];for(let c=0;c<Math.min(2,ab.numberOfChannels);c++)chs.push(ab.getChannelData(c));
+  const len=chs[0].length,step=ab.sampleRate/PR,n=Math.ceil(len/step),mn=new Float32Array(n),mx=new Float32Array(n);
+  for(let i=0;i<n;i++){let lo=0,hi=0;const e=Math.min(len,Math.floor((i+1)*step));for(const ch of chs)for(let j=Math.floor(i*step);j<e;j++){const v=ch[j];if(v<lo)lo=v;else if(v>hi)hi=v}mn[i]=lo;mx[i]=hi}
+  peaks={mn,mx,n};
+}
+
+// 오디오 연결 (내보내기 녹음용)
+function ensureAudio(){if(actx)return;try{actx=new AudioContext();srcNode=actx.createMediaElementSource(vid);spk=actx.createGain();srcNode.connect(spk);spk.connect(actx.destination)}catch(e){actx=null}}
+
+// 재생
+function play(){if(!segs.length||exporting)return;ensureAudio();if(actx)actx.resume();if(playT>=total()-0.02)seek(0);playing=true;vid.play().catch(()=>{playing=false;btns()});btns();requestAnimationFrame(tick)}
+function pause(){playing=false;stopAt=null;vid.pause();btns()}
+function seek(t){if(!segs.length)return;t=Math.max(0,Math.min(total(),t));playT=t;const l=locate(t);cur=l.i;vid.currentTime=l.src;vid.playbackRate=segs[cur].sp;ui()}
+function tick(){
+  if(!playing)return;
+  let s=segs[cur],src=vid.currentTime;
+  if(src>=s.b-0.015||vid.ended){
+    if(cur+1<segs.length){cur++;s=segs[cur];vid.currentTime=s.a;vid.playbackRate=s.sp;src=s.a;if(vid.paused)vid.play().catch(()=>{})}
+    else{pause();playT=total();ui();return}
+  }
+  playT=starts[cur]+Math.max(0,src-s.a)/s.sp;
+  if(stopAt!=null&&playT>=stopAt){const e=stopAt;pause();seek(e);return}
+  const p=pps(),x=(playT-hs.scrollLeft/p)*p;
+  if(x>tl.clientWidth-30||x<0)hs.scrollLeft=playT*p-40;
+  ui();requestAnimationFrame(tick);
+}
+
+// 편집 동작
+function cutRange(a,b){
+  const out=[];let o=0;
+  for(const s of segs){const sp=s.sp,os=o,oe=o+slen(s);o=oe;
+    if(oe<=a||os>=b){out.push({...s});continue}
+    if(os<a)out.push({a:s.a,b:s.a+(a-os)*sp,sp});
+    if(oe>b)out.push({a:s.a+(b-os)*sp,b:s.b,sp});
+  }
+  segs=out.filter(s=>s.b-s.a>0.01);
+  const d=b-a;
+  subs=subs.map(s=>{if(s.e<=a)return s;if(s.s>=b)return{...s,s:s.s-d,e:s.e-d};const ns=s.s<a?s.s:a,ne=s.e>b?s.e-d:a;return ne-ns>0.1?{...s,s:ns,e:ne}:null}).filter(Boolean);
+  recalc();
+}
+function needSel(){if(!sel||sel.b-sel.a<0.01){toast('먼저 파형 위를 드래그해서 구간을 선택하세요');return false}return true}
+function delSel(){if(!needSel())return;if(sel.a<=0.01&&sel.b>=total()-0.01){toast('영상 전체를 지울 수는 없어요');return}push();const a=sel.a;cutRange(sel.a,sel.b);sel=null;renderSubs();seek(a);toast('선택 구간을 지웠어요')}
+function keepSel(){if(!needSel())return;push();const {a,b}=sel;cutRange(b,total());cutRange(0,a);sel=null;renderSubs();seek(0);toast('선택 구간만 남겼어요')}
+function split(){if(!segs.length)return;const l=locate(playT),s=segs[l.i];if(l.src-s.a<0.05||s.b-l.src<0.05){toast('이미 나뉜 자리예요');return}push();segs.splice(l.i,1,{a:s.a,b:l.src,sp:s.sp},{a:l.src,b:s.b,sp:s.sp});recalc();draw();toast('나눴어요. 빨간 점선이 나눈 자리예요')}
+function splitAt(t){const l=locate(t),s=segs[l.i];if(l.src-s.a>1e-4&&s.b-l.src>1e-4){segs.splice(l.i,1,{a:s.a,b:l.src,sp:s.sp},{a:l.src,b:s.b,sp:s.sp});recalc()}}
+function applySpeed(){
+  if(!segs.length){toast('먼저 영상을 열어 주세요');return}
+  const sp=+$('speed').value,whole=!sel||sel.b-sel.a<0.01,a=whole?0:sel.a,b=whole?total():sel.b;
+  push();splitAt(a);splitAt(b);
+  const old=segs.map(s=>({...s})),os=starts.slice(),oT=total();
+  old.forEach((s,i)=>{const e=os[i]+slen(s);if(os[i]>=a-1e-6&&e<=b+1e-6)segs[i].sp=sp});
+  // 같은 배속끼리 이어진 조각은 다시 합치기
+  const m=[];for(const s of segs){const p=m[m.length-1];if(p&&p.sp===s.sp&&Math.abs(p.b-s.a)<1e-6)p.b=s.b;else m.push({...s})}
+  const keep=segs.map(s=>({...s}));segs=keep;recalc();
+  const map=t=>{if(t>=oT-1e-9)return total();let i=0;while(i+1<os.length&&t>=os[i+1])i++;return starts[i]+(t-os[i])*old[i].sp/segs[i].sp};
+  subs=subs.map(s=>({...s,s:map(s.s),e:map(s.e)}));const pt=map(playT);
+  sel=whole?null:{a:map(a),b:map(b)};segs=m;recalc();renderSubs();btns();seek(pt);
+  toast(whole?`전체를 ${sp}배속으로 바꿨어요`:`선택 구간을 ${sp}배속으로 바꿨어요`);
+}
+function addSub(){
+  if(!segs.length){toast('먼저 영상을 열어 주세요');return}
+  let a,b;if(sel&&sel.b-sel.a>0.1){a=sel.a;b=sel.b}else{a=playT;b=Math.min(total(),playT+2)}
+  if(b-a<0.1){toast('영상 끝이라 자막을 넣을 자리가 없어요');return}
+  push();const s={id:nextId++,s:a,e:b,text:''};subs.push(s);subs.sort((x,y)=>x.s-y.s);activeId=s.id;justAdded=s.id;
+  renderSubs();draw();const ta=document.querySelector(`.sub[data-id="${s.id}"] textarea`);if(ta){ta.focus();ta.scrollIntoView({block:'nearest'})}
+}
+
+// 화면 갱신
+function btns(){$('playBtn').textContent=playing?'일시정지':'재생';$('undoBtn').disabled=!undoS.length;$('redoBtn').disabled=!redoS.length;
+  $('selInfo').textContent=sel?`선택 ${fmt(sel.a)} ~ ${fmt(sel.b)} (${(sel.b-sel.a).toFixed(2)}초)`:''}
+function ui(){
+  $('tc').textContent=fmt(playT)+' / '+fmt(total());
+  const txt=subs.filter(s=>playT>=s.s&&playT<s.e).map(s=>s.text).join('\n').trim();
+  cap.textContent=txt;cap.style.display=txt?'':'none';
+  draw();
+}
+function capStyle(){
+  const h=$('stage').clientHeight||300,fs=style.size/100*h;
+  cap.style.fontSize=fs+'px';cap.style.color=style.color;cap.style.webkitTextStroke=(fs*0.2)+'px '+style.stroke;
+  cap.style.background=style.box?'rgba(0,0,0,.6)':'transparent';cap.className='cap '+(style.pos==='bottom'?'':style.pos);
+}
+function layout(){
+  const box=$('stagebox'),W=box.clientWidth,H=box.clientHeight,ar=(vid.videoWidth||16)/(vid.videoHeight||9);
+  let w=W,h=W/ar;if(h>H){h=H;w=H*ar}
+  const st=$('stage');st.style.width=w+'px';st.style.height=h+'px';capStyle();draw();
+}
+function renderSubs(){
+  const L=$('subList');
+  if(!subs.length){L.innerHTML='<p class="dim" style="margin:0">아직 자막이 없어요. 파형에서 구간을 드래그로 선택하고 <b>자막 추가</b>를 누르면 그 구간에 자막이 들어가요. 선택이 없으면 재생 위치부터 2초짜리 자막이 생겨요.</p>';return}
+  L.innerHTML=subs.map((s,i)=>`<div class="sub ${s.id===activeId?'on':''}" data-id="${s.id}"><div class="sh"><span class="num">${i+1}</span><span class="tm">${fmt(s.s)} → ${fmt(s.e)}</span><span class="sp"></span><button data-a="s" title="자막 시작을 지금 재생 위치로">시작=지금</button><button data-a="e" title="자막 끝을 지금 재생 위치로">끝=지금</button><button data-a="d" class="x">삭제</button></div><textarea rows="2" placeholder="자막 내용을 입력하세요 (Enter로 줄바꿈)">${esc(s.text)}</textarea></div>`).join('');
+}
+function updTimes(){document.querySelectorAll('.sub').forEach(el=>{const s=subs.find(x=>x.id==el.dataset.id);if(s)el.querySelector('.tm').textContent=fmt(s.s)+' → '+fmt(s.e)})}
+
+// 타임라인 그리기
+const RH=22,WH=104,SH=44,CH=RH+WH+SH;
+const pps=()=>(tl.clientWidth/(total()||1))*zoom;
+function draw(){
+  const dpr=devicePixelRatio||1,cw=tl.clientWidth;
+  if(tl.width!==Math.round(cw*dpr)){tl.width=Math.round(cw*dpr);tl.height=CH*dpr}
+  const c=tl.getContext('2d');c.setTransform(dpr,0,0,dpr,0,0);c.fillStyle='#0a0c0e';c.fillRect(0,0,cw,CH);
+  if(!segs.length){c.fillStyle='#5d6672';c.font='14px "Noto Sans KR",sans-serif';c.fillText('영상을 열면 여기에 소리 파형이 나타나요',16,CH/2);spacer.style.width='0';return}
+  const p=pps(),T=total();spacer.style.width=(T*p)+'px';
+  const v0=hs.scrollLeft/p,X=t=>(t-v0)*p;
+  // 눈금자
+  c.fillStyle='#16191d';c.fillRect(0,0,cw,RH);c.strokeStyle='#3a414a';c.fillStyle='#8a939e';c.font='11px "JetBrains Mono",monospace';
+  const st=[.1,.2,.5,1,2,5,10,15,30,60,120,300,600,1800].find(s=>s*p>=72)||3600;
+  for(let k=Math.floor(v0/st);k*st<=v0+cw/p;k++){const t=k*st;if(t<0)continue;const x=Math.round(X(t))+.5;c.beginPath();c.moveTo(x,RH-7);c.lineTo(x,RH);c.stroke();c.fillText(st<1?fmt(t):fmt(t).slice(0,5),x+3,12)}
+  // 파형
+  const mid=RH+WH/2;c.fillStyle='#0d130f';c.fillRect(0,RH,Math.min(cw,X(T)),WH);c.fillStyle='#24402b';c.fillRect(0,mid,Math.min(cw,X(T)),1);
+  c.fillStyle='#8be36a';
+  if(peaks){for(let x=0;x<cw;x++){const t0=v0+x/p;if(t0>=T)break;const l=locate(t0);let i0=Math.floor(l.src*PR),i1=Math.floor((l.src+segs[l.i].sp/p)*PR);if(i1<=i0)i1=i0+1;i1=Math.min(i1,peaks.n);let lo=0,hi=0;const sd=Math.max(1,Math.floor((i1-i0)/300));for(let i=i0;i<i1;i+=sd){if(peaks.mn[i]<lo)lo=peaks.mn[i];if(peaks.mx[i]>hi)hi=peaks.mx[i]}const a=hi*WH*.48,b=-lo*WH*.48;c.fillRect(x,mid-a,1,Math.max(1,a+b))}}
+  else{c.fillStyle='#1d3323';c.fillRect(X(0),RH+34,X(T)-X(0),WH-68)}
+  // 자른 자리
+  c.strokeStyle='#ff6b5a';c.setLineDash([4,3]);for(let i=1;i<starts.length;i++){const x=Math.round(X(starts[i]))+.5;if(x<0||x>cw)continue;c.beginPath();c.moveTo(x,RH);c.lineTo(x,RH+WH);c.stroke()}c.setLineDash([]);
+  c.font='bold 12px "Noto Sans KR",sans-serif';
+  segs.forEach((s,i)=>{if(s.sp===1)return;const x1=Math.max(0,X(starts[i])),x2=Math.min(cw,X(starts[i]+slen(s)));if(x2<=0||x1>=cw)return;c.fillStyle=s.sp>1?'rgba(255,170,60,.13)':'rgba(80,200,255,.13)';c.fillRect(x1,RH,x2-x1,WH);if(x2-x1>34){c.fillStyle=s.sp>1?'#ffb45c':'#6fd3ff';c.fillText(s.sp+'배',x1+5,RH+16)}});
+  // 자막 트랙
+  const sy=RH+WH;c.fillStyle='#121419';c.fillRect(0,sy,cw,SH);c.fillStyle='#3a3f47';c.fillRect(0,sy,cw,1);
+  c.font='12px "Noto Sans KR",sans-serif';
+  for(const s of subs){const x1=X(s.s),x2=X(s.e);if(x2<0||x1>cw)continue;const w=Math.max(3,x2-x1);c.fillStyle=s.id===activeId?'#d4a8ff':'#8d5fcc';
+    c.beginPath();c.roundRect?c.roundRect(x1,sy+6,w,SH-12,5):c.rect(x1,sy+6,w,SH-12);c.fill();
+    if(w>14){c.save();c.beginPath();c.rect(x1+4,sy,w-8,SH);c.clip();c.fillStyle='#1b0c2e';c.fillText(s.text.replace(/\n/g,' ')||'(빈 자막)',x1+6,sy+27);c.restore()}}
+  // 끝 이후
+  const xe=X(T);if(xe<cw){c.fillStyle='#060708';c.fillRect(xe,0,cw-xe,CH)}
+  // 선택
+  if(sel){const a=X(sel.a),b=X(sel.b);c.fillStyle='rgba(79,157,255,.24)';c.fillRect(a,RH,b-a,CH-RH);c.strokeStyle='#4f9dff';c.lineWidth=1;c.strokeRect(Math.round(a)+.5,RH+.5,Math.round(b-a),CH-RH-1)}
+  // 재생선
+  const px=Math.round(X(playT));c.fillStyle='#ff4d4d';c.fillRect(px-1,0,2,CH);c.beginPath();c.moveTo(px-6,0);c.lineTo(px+6,0);c.lineTo(px,8);c.fill();
+}
+
+// 타임라인 마우스
+const tAt=x=>Math.max(0,Math.min(total(),hs.scrollLeft/pps()+x/pps()));
+tl.addEventListener('pointerdown',e=>{
+  if(!segs.length||exporting)return;
+  const r=tl.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top,t=tAt(x),p=pps(),v0=hs.scrollLeft/p;
+  tl.setPointerCapture(e.pointerId);
+  if(y>=RH+WH){
+    for(let i=subs.length-1;i>=0;i--){const s=subs[i],x1=(s.s-v0)*p,x2=(s.e-v0)*p;
+      if(x>=x1-4&&x<=x2+4){drag={k:'sub',s,mode:x-x1<7?'L':x2-x<7?'R':'M',t0:t,os:s.s,oe:s.e,pushed:false};activeId=s.id;renderSubs();draw();return}}
+    activeId=null;renderSubs();seek(t);return;
+  }
+  if(e.shiftKey&&sel){drag={k:'sel',t0:Math.abs(t-sel.a)<Math.abs(t-sel.b)?sel.b:sel.a,x0:-99,moved:true};sel={a:Math.min(drag.t0,t),b:Math.max(drag.t0,t)};btns();draw();return}
+  drag={k:'sel',t0:t,x0:x,moved:false};
+});
+tl.addEventListener('pointermove',e=>{
+  if(!segs.length)return;
+  const r=tl.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;
+  if(!drag){let cu='crosshair';if(y>=RH+WH){const p=pps(),v0=hs.scrollLeft/p;for(const s of subs){const x1=(s.s-v0)*p,x2=(s.e-v0)*p;if(x>=x1-4&&x<=x2+4){cu=(x-x1<7||x2-x<7)?'ew-resize':'grab';break}}if(cu==='crosshair')cu='pointer'}tl.style.cursor=cu;return}
+  const t=tAt(x);
+  if(drag.k==='sel'){if(Math.abs(x-drag.x0)>3)drag.moved=true;if(drag.moved){sel={a:Math.min(drag.t0,t),b:Math.max(drag.t0,t)};btns();draw()}return}
+  const s=drag.s,d=t-drag.t0,T=total();if(Math.abs(d)<0.005&&!drag.pushed)return;
+  if(!drag.pushed){push();drag.pushed=true}
+  if(drag.mode==='M'){const len=drag.oe-drag.os,ns=Math.max(0,Math.min(T-len,drag.os+d));s.s=ns;s.e=ns+len}
+  else if(drag.mode==='L')s.s=Math.max(0,Math.min(drag.oe-0.1,drag.os+d));
+  else s.e=Math.min(T,Math.max(drag.os+0.1,drag.oe+d));
+  updTimes();ui();
+});
+tl.addEventListener('pointerup',()=>{
+  if(!drag)return;
+  if(drag.k==='sel'&&!drag.moved){sel=null;btns();seek(drag.t0)}
+  if(drag.k==='sub'){if(drag.pushed){subs.sort((a,b)=>a.s-b.s);renderSubs()}else seek(drag.s.s)}
+  drag=null;draw();
+});
+tl.addEventListener('wheel',e=>{
+  if(!segs.length)return;e.preventDefault();
+  if(e.shiftKey||Math.abs(e.deltaX)>Math.abs(e.deltaY)){hs.scrollLeft+=e.deltaX||e.deltaY;draw();return}
+  const x=e.clientX-tl.getBoundingClientRect().left,tb=tAt(x);
+  setZoom(zoom*Math.exp(-e.deltaY*0.0015),tb,x);
+},{passive:false});
+function setZoom(z,t,x){zoom=Math.max(1,Math.min(400,z));$('zoom').value=Math.log(zoom)/Math.log(400)*100;draw();hs.scrollLeft=t*pps()-x;draw()}
+$('zoom').oninput=e=>{const z=Math.pow(400,e.target.value/100);setZoom(z,playT,tl.clientWidth/2)};
+hs.addEventListener('scroll',draw);
+
+// 자막 목록
+const L=$('subList');
+L.addEventListener('click',e=>{
+  const el=e.target.closest('.sub');if(!el)return;const s=subs.find(x=>x.id==el.dataset.id);if(!s)return;
+  const a=e.target.dataset.a;
+  if(a==='d'){push();subs=subs.filter(x=>x!==s);renderSubs();ui();return}
+  if(a==='s'){if(playT>=s.e-0.05){toast('시작이 끝보다 뒤에 올 수 없어요');return}push();s.s=playT;subs.sort((x,y)=>x.s-y.s);renderSubs();ui();return}
+  if(a==='e'){if(playT<=s.s+0.05){toast('끝이 시작보다 앞에 올 수 없어요');return}push();s.e=playT;renderSubs();ui();return}
+  if(e.target.tagName!=='TEXTAREA'){activeId=s.id;document.querySelectorAll('.sub').forEach(x=>x.classList.toggle('on',x===el));seek(s.s)}
+});
+L.addEventListener('focusin',e=>{
+  if(e.target.tagName!=='TEXTAREA')return;const el=e.target.closest('.sub'),s=subs.find(x=>x.id==el.dataset.id);if(!s)return;
+  activeId=s.id;document.querySelectorAll('.sub').forEach(x=>x.classList.toggle('on',x===el));
+  if(justAdded===s.id)justAdded=null;else push();
+  if(!playing&&(playT<s.s||playT>=s.e))seek(s.s);else draw();
+});
+L.addEventListener('input',e=>{if(e.target.tagName!=='TEXTAREA')return;const s=subs.find(x=>x.id==e.target.closest('.sub').dataset.id);if(s){s.text=e.target.value;ui()}});
+
+// 자막 모양
+$('stSize').oninput=e=>{style.size=+e.target.value;capStyle()};
+$('stColor').oninput=e=>{style.color=e.target.value;capStyle()};
+$('stStroke').oninput=e=>{style.stroke=e.target.value;capStyle()};
+$('stPos').onchange=e=>{style.pos=e.target.value;capStyle()};
+$('stBox').onchange=e=>{style.box=e.target.checked;capStyle()};
+
+// 내보내기
+function wrapLines(g,text,maxW){const out=[];for(const para of text.split('\n')){let line='';for(const w of para.split(' ')){const t=line?line+' '+w:w;if(!line||g.measureText(t).width<=maxW)line=t;else{out.push(line);line=w}}out.push(line)}return out}
+function drawCap(g,W,H,t){
+  const txt=subs.filter(s=>t>=s.s&&t<s.e).map(s=>s.text).join('\n').trim();if(!txt)return;
+  const fs=style.size/100*H;g.font=`700 ${fs}px "Noto Sans KR",sans-serif`;
+  const lines=wrapLines(g,txt,W*0.9-fs*.8),lh=fs*1.3,bh=lines.length*lh+fs*.2;
+  const y0=style.pos==='top'?H*0.06:style.pos==='middle'?(H-bh)/2:H*0.94-bh;
+  g.textAlign='center';g.textBaseline='middle';
+  if(style.box){const mw=Math.max(...lines.map(l=>g.measureText(l).width))+fs*.8;g.fillStyle='rgba(0,0,0,.6)';g.fillRect(W/2-mw/2,y0,mw,bh)}
+  g.lineJoin='round';g.lineWidth=fs*0.2;g.strokeStyle=style.stroke;g.fillStyle=style.color;
+  lines.forEach((l,i)=>{const y=y0+fs*.1+lh*(i+.5);g.strokeText(l,W/2,y);g.fillText(l,W/2,y)});
+}
+async function saveFile(blob,name,altName){
+  let d=null;try{if(window.claude&&window.claude.use)d=await window.claude.use('downloads')}catch(e){}
+  if(d){try{await d.save({filename:altName||name,data:blob});toast('저장했어요')}catch(e){if(e&&e.code!=='declined')toast('저장하지 못했어요 '+(e&&e.message||''))}return}
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),60000);toast('다운로드를 시작했어요');
+}
+
+function showMode(fast){$('expMode').textContent=fast?'빠른 내보내기 (WebCodecs 인코딩)':'실시간 녹화 방식 (이 브라우저는 빠른 내보내기를 지원하지 않아요)';
+  $('expNote').textContent=fast?'영상을 재생하지 않고 프레임을 직접 인코딩해요. 컴퓨터 성능에 따라 보통 실제 길이보다 몇 배 빨라요.':'편집된 영상을 재생하면서 녹화해요. 편집된 길이만큼 시간이 걸리고, 이 탭을 화면에 띄워 두어야 끊기지 않아요.';
+  $('hearRow').hidden=fast;$('expBar').style.width='0';$('expMsg').textContent='준비 중...'}
+let MB=null;
+async function exportVideo(){
+  if(!segs.length||!curFile){toast('먼저 영상을 열어 주세요');return}
+  if(exporting)return;pause();
+  let ok=false;
+  if(typeof VideoEncoder!=='undefined'){
+    try{MB=MB||await import('https://cdn.jsdelivr.net/npm/mediabunny@1.65.2/dist/bundles/mediabunny.min.mjs');ok=true}catch(e){console.warn(e)}
+  }
+  if(!ok)return exportRealtime();
+  try{await exportFast()}catch(e){console.error(e);exporting=false;$('modal').hidden=true;if(e&&e.message==='cancel'){toast('내보내기를 멈췄어요');return}toast('빠른 내보내기에 실패해서 실시간 방식으로 다시 해요');return exportRealtime()}
+}
+// 음 높이를 유지한 채 속도 바꾸기 (WSOLA)
+function stretch(chs,rate,sr){
+  const len=chs[0].length,L=Math.max(1,Math.round(len/rate));if(Math.abs(rate-1)<1e-3||len<sr*0.1)return chs.map(c=>fit(c,L));
+  const D=4,W=Math.round(sr*0.04/D)*D,Hs=W/2,Ha=Hs*rate,del=Math.round(sr*0.012/D)*D,win=new Float32Array(W);
+  for(let i=0;i<W;i++)win[i]=0.5-0.5*Math.cos(2*Math.PI*i/W);
+  const mono=new Float32Array(Math.ceil(len/D));for(let i=0;i<mono.length;i++){let v=0;for(const c of chs)v+=c[i*D]||0;mono[i]=v}
+  const out=chs.map(()=>new Float32Array(L+W)),nrm=new Float32Array(L+W),w4=W/D;let prev=0;
+  for(let k=0,op=0;op<L;k++,op=k*Hs){
+    let pos=Math.round(k*Ha);
+    if(k>0){const nat=(prev+Hs)/D,lo=Math.max(0,(pos-del)/D|0),hi=Math.min(mono.length-w4,(pos+del)/D|0);let best=-1e30,bp=pos;
+      for(let q=lo;q<=hi;q++){let s=0;for(let j=0;j<w4;j+=2)s+=mono[q+j]*(mono[nat+j]||0);if(s>best){best=s;bp=q*D}}pos=bp}
+    pos=Math.max(0,Math.min(len-W,pos));if(pos<0)pos=0;
+    for(let i=0;i<W&&op+i<L+W;i++){const w=win[i];nrm[op+i]+=w;for(let c=0;c<chs.length;c++)out[c][op+i]+=(chs[c][pos+i]||0)*w}
+    prev=pos;
+  }
+  return out.map(o=>{for(let i=0;i<L;i++)if(nrm[i]>1e-3)o[i]/=nrm[i];return o.subarray(0,L)});
+}
+function fit(c,L){if(c.length===L)return c;const o=new Float32Array(L);o.set(c.subarray(0,Math.min(L,c.length)));return o}
+async function exportFast(){
+  const M=MB;exporting=true;cancelX=false;$('modal').hidden=false;showMode(true);
+  const chk=()=>{if(cancelX)throw new Error('cancel')};
+  try{
+    try{await document.fonts.load('700 40px "Noto Sans KR"')}catch(e){}
+    const input=new M.Input({source:new M.BlobSource(curFile),formats:M.ALL_FORMATS});
+    const vt=await input.getPrimaryVideoTrack(),at=await input.getPrimaryAudioTrack();
+    if(!vt)throw new Error('no video');
+    const W=Math.max(2,Math.round(vt.displayWidth/2)*2),H=Math.max(2,Math.round(vt.displayHeight/2)*2);
+    let fps=30;try{const st=await vt.computePacketStats(100);if(st.averagePacketRate>0)fps=Math.min(60,Math.max(15,Math.round(st.averagePacketRate)))}catch(e){}
+    // 형식 고르기: mp4(H.264+AAC)가 되면 mp4, 아니면 webm
+    let fmt='mp4',vc=await M.getFirstEncodableVideoCodec(['avc'],{width:W,height:H}),ac='aac';
+    if(at&&!(await M.canEncodeAudio('aac',{numberOfChannels:2,sampleRate:48000})))vc=null;
+    if(!vc){fmt='webm';vc=await M.getFirstEncodableVideoCodec(['vp9','vp8','av1'],{width:W,height:H});ac='opus'}
+    if(!vc)throw new Error('no encoder');
+    const output=new M.Output({format:fmt==='mp4'?new M.Mp4OutputFormat({fastStart:'in-memory'}):new M.WebMOutputFormat(),target:new M.BufferTarget()});
+    const cv=document.createElement('canvas');cv.width=W;cv.height=H;const g=cv.getContext('2d');
+    const vs=new M.CanvasSource(cv,{codec:vc,bitrate:M.QUALITY_HIGH});output.addVideoTrack(vs,{frameRate:fps});
+    let as=null,decodable=false;
+    if(at){decodable=await at.canDecode();if(decodable){as=new M.AudioBufferSource({codec:ac,bitrate:M.QUALITY_HIGH});output.addAudioTrack(as)}}
+    await output.start();
+    const T=total(),prog=(f,msg)=>{$('expBar').style.width=(f*100).toFixed(1)+'%';$('expMsg').textContent=msg};
+    // 소리: 구간마다 잘라서 배속 적용
+    if(as){
+      const sink=new M.AudioBufferSink(at);let sr=0,nc=0;
+      for(let k=0;k<segs.length;k++){chk();const s=segs[k];prog(k/segs.length*0.1,`소리 처리 중 ${k+1}/${segs.length}`);
+        let chs=null;
+        for await(const wb of sink.buffers(s.a,s.b)){const bf=wb.buffer;
+          if(!chs){sr=sr||bf.sampleRate;nc=nc||Math.min(2,bf.numberOfChannels);chs=Array.from({length:nc},()=>new Float32Array(Math.round((s.b-s.a)*sr)+1))}
+          const off=Math.round((wb.timestamp-s.a)*sr);
+          for(let c=0;c<nc;c++){const d=bf.getChannelData(Math.min(c,bf.numberOfChannels-1));for(let i=0;i<d.length;i++){const j=off+i;if(j>=0&&j<chs[c].length)chs[c][j]=d[i]}}}
+        if(!sr)sr=48000;if(!nc)nc=2;
+        const L=Math.max(1,Math.round(slen(s)*sr));
+        if(!chs)chs=Array.from({length:nc},()=>new Float32Array(L));
+        chs=stretch(chs,s.sp,sr).map(c=>fit(c,L));
+        const fd=Math.min(Math.round(sr*0.005),L>>1);for(const c of chs)for(let i=0;i<fd;i++){const w=i/fd;c[i]*=w;c[L-1-i]*=w}
+        for(let o=0;o<L;o+=sr){const n=Math.min(sr,L-o),ab=new AudioBuffer({length:n,numberOfChannels:nc,sampleRate:sr});chs.forEach((c,ci)=>ab.copyToChannel(c.subarray(o,o+n),ci));await as.add(ab)}
+      }
+      as.close();
+    }
+    // 화면: 출력 프레임마다 원본 시각을 찾아 그리기
+    const N=Math.max(1,Math.ceil(T*fps-1e-6));
+    const csink=new M.CanvasSink(vt,{poolSize:2});
+    function*times(){for(let n=0;n<N;n++)yield locate(Math.min(T,n/fps)).src}
+    let n=0,t0=performance.now();
+    for await(const wc of csink.canvasesAtTimestamps(times())){
+      chk();const t=n/fps;g.fillStyle='#000';g.fillRect(0,0,W,H);if(wc)g.drawImage(wc.canvas,0,0,W,H);drawCap(g,W,H,t);
+      await vs.add(t,1/fps);n++;
+      if(n%5===0){const el=(performance.now()-t0)/1000;prog(0.1+0.88*n/N,`${fmt2(t)} / ${fmt2(T)}  (실제 속도의 ${(t/Math.max(el,0.001)).toFixed(1)}배)`)}
+      if(n>=N)break;
+    }
+    vs.close();prog(0.99,'파일로 묶는 중...');
+    await output.finalize();
+    const blob=new Blob([output.target.buffer],{type:fmt==='mp4'?'video/mp4':'video/webm'});
+    exporting=false;$('modal').hidden=true;
+    if(at&&!decodable)toast('이 영상의 소리 형식은 읽을 수 없어서 소리 없이 저장해요');
+    await saveFile(blob,`${fileName}_편집.${fmt}`);
+  }finally{exporting=false;$('modal').hidden=true}
+}
+const fmt2=t=>fmt(t);
+async function exportRealtime(){
+  if(typeof MediaRecorder==='undefined'||!HTMLCanvasElement.prototype.captureStream){toast('이 브라우저는 내보내기를 지원하지 않아요. 크롬이나 엣지를 써 주세요');return}
+  pause();ensureAudio();if(actx)await actx.resume();
+  try{await document.fonts.load('700 40px "Noto Sans KR"')}catch(e){}
+  const W=vid.videoWidth,H=vid.videoHeight,cv=document.createElement('canvas');cv.width=W;cv.height=H;const g=cv.getContext('2d');
+  const stream=cv.captureStream(30);let dest=null;
+  if(actx){dest=actx.createMediaStreamDestination();srcNode.connect(dest);dest.stream.getAudioTracks().forEach(t=>stream.addTrack(t))}
+  const types=['video/mp4;codecs=avc1.640028,mp4a.40.2','video/mp4;codecs=avc1.42E01E,mp4a.40.2','video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm'];
+  const mime=types.find(t=>MediaRecorder.isTypeSupported(t))||'',ext=mime.includes('mp4')?'mp4':'webm';
+  const rec=new MediaRecorder(stream,mime?{mimeType:mime,videoBitsPerSecond:Math.min(16e6,Math.max(4e6,W*H*4))}:{});
+  const chunks=[];rec.ondataavailable=e=>{if(e.data&&e.data.size)chunks.push(e.data)};const stopped=new Promise(r=>rec.onstop=r);
+  const T=total();exporting=true;cancelX=false;$('modal').hidden=false;showMode(false);if(spk)spk.gain.value=$('hear').checked?1:0;
+  const seekTo=src=>new Promise(r=>{const h=()=>{vid.removeEventListener('seeked',h);r()};vid.addEventListener('seeked',h);vid.currentTime=src});
+  const frame=t=>{g.drawImage(vid,0,0,W,H);drawCap(g,W,H,t);$('expBar').style.width=(t/T*100)+'%';$('expMsg').textContent=fmt(t)+' / '+fmt(T)};
+  try{
+    await seekTo(segs[0].a);frame(0);rec.start(500);
+    for(let k=0;k<segs.length&&!cancelX;k++){
+      const s=segs[k];
+      if(k>0){await seekTo(s.a);frame(starts[k]);rec.resume()}
+      vid.playbackRate=s.sp;await vid.play();
+      await new Promise(res=>{const step=()=>{if(cancelX){res();return}const src=vid.currentTime;
+        if(src>=s.b-0.012||vid.ended){if(k<segs.length-1)rec.pause();vid.pause();res();return}
+        frame(starts[k]+Math.max(0,src-s.a)/s.sp);requestAnimationFrame(step)};requestAnimationFrame(step)});
+    }
+  }catch(e){toast('내보내기 중 문제가 생겼어요');cancelX=true}
+  finally{vid.pause();if(rec.state!=='inactive')rec.stop();await stopped;if(dest){try{srcNode.disconnect(dest)}catch(e){}}if(spk)spk.gain.value=1;exporting=false;$('modal').hidden=true;seek(playT)}
+  if(cancelX){toast('내보내기를 멈췄어요');return}
+  await saveFile(new Blob(chunks,{type:mime||'video/webm'}),`${fileName}_편집.${ext}`);
+}
+$('hear').onchange=e=>{if(exporting&&spk)spk.gain.value=e.target.checked?1:0};
+$('cancelExp').onclick=()=>{cancelX=true};
+
+// SRT
+const ts=t=>{const ms=Math.round(t*1000),h=Math.floor(ms/3600000),m=Math.floor(ms/60000)%60,s=Math.floor(ms/1000)%60;return`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')},${String(ms%1000).padStart(3,'0')}`};
+$('srtBtn').onclick=()=>{if(!subs.length){toast('저장할 자막이 없어요');return}const txt=subs.map((s,i)=>`${i+1}\n${ts(s.s)} --> ${ts(s.e)}\n${s.text}\n`).join('\n');saveFile(new Blob([txt],{type:'text/plain'}),`${fileName}.srt`,`${fileName}_자막(srt).txt`)};
+$('srtIn').onchange=async e=>{
+  const f=e.target.files[0];e.target.value='';if(!f)return;if(!segs.length){toast('먼저 영상을 열어 주세요');return}
+  const txt=(await f.text()).replace(/\r/g,''),pt=x=>{const m=x.trim().match(/(\d+):(\d+):(\d+)[,.](\d+)/);return m?+m[1]*3600+ +m[2]*60+ +m[3]+ +m[4]/1000:NaN};
+  const add=[];for(const b of txt.split(/\n\s*\n/)){const ls=b.split('\n');const i=ls.findIndex(l=>l.includes('-->'));if(i<0)continue;const [a,c]=ls[i].split('-->').map(pt);if(isNaN(a)||isNaN(c))continue;add.push({id:nextId++,s:a,e:c,text:ls.slice(i+1).join('\n').trim()})}
+  if(!add.length){toast('SRT 형식의 자막을 찾지 못했어요');return}
+  push();subs=subs.concat(add).sort((x,y)=>x.s-y.s);renderSubs();ui();toast(`자막 ${add.length}개를 불러왔어요`);
+};
+
+// 버튼, 단축키, 끌어놓기
+$('fileIn').onchange=e=>{load(e.target.files[0]);e.target.value=''};
+$('playBtn').onclick=()=>playing?pause():play();
+$('playSelBtn').onclick=()=>{if(!needSel())return;const e=sel.b;seek(sel.a);play();stopAt=e};
+$('undoBtn').onclick=undo;$('redoBtn').onclick=redo;
+$('delBtn').onclick=delSel;$('keepBtn').onclick=keepSel;$('splitBtn').onclick=split;
+$('clearSelBtn').onclick=()=>{sel=null;btns();draw()};
+$('addSubBtn').onclick=addSub;$('speedBtn').onclick=applySpeed;$('expBtn').onclick=exportVideo;
+document.addEventListener('keydown',e=>{
+  const tg=e.target;if(tg.tagName==='TEXTAREA'||tg.tagName==='SELECT'||(tg.tagName==='INPUT'&&tg.type!=='range'&&tg.type!=='checkbox'))return;
+  if(exporting)return;const k=e.code,mod=e.ctrlKey||e.metaKey;
+  if(k==='Space'){e.preventDefault();playing?pause():play()}
+  else if(mod&&k==='KeyZ'){e.preventDefault();e.shiftKey?redo():undo()}
+  else if(mod&&k==='KeyY'){e.preventDefault();redo()}
+  else if(mod)return;
+  else if(e.key==='Delete'||e.key==='Backspace'){e.preventDefault();delSel()}
+  else if(k==='KeyS')split();
+  else if(k==='KeyT'){e.preventDefault();addSub()}
+  else if(k==='Escape'){sel=null;btns();draw()}
+  else if(k==='BracketLeft'&&segs.length){sel={a:playT,b:sel&&sel.b>playT?sel.b:total()};btns();draw()}
+  else if(k==='BracketRight'&&segs.length){sel={a:sel&&sel.a<playT?sel.a:0,b:playT};btns();draw()}
+  else if(k==='ArrowLeft'){e.preventDefault();seek(playT-(e.shiftKey?1:1/30))}
+  else if(k==='ArrowRight'){e.preventDefault();seek(playT+(e.shiftKey?1:1/30))}
+  else if(k==='Home')seek(0);else if(k==='End')seek(total());
+});
+const sb=$('stagebox');
+['dragenter','dragover'].forEach(n=>document.addEventListener(n,e=>{e.preventDefault();$('empty').classList.add('over')}));
+document.addEventListener('dragleave',e=>{if(!e.relatedTarget)$('empty').classList.remove('over')});
+document.addEventListener('drop',e=>{e.preventDefault();$('empty').classList.remove('over');const f=e.dataTransfer.files[0];if(f&&/\.srt$/i.test(f.name)){const dt=new DataTransfer();dt.items.add(f);$('srtIn').files=dt.files;$('srtIn').onchange({target:$('srtIn')})}else load(f)});
+vid.addEventListener('pause',()=>{if(playing&&!exporting&&vid.ended){}});
+const ro=new ResizeObserver(layout);ro.observe(sb);ro.observe(tl);
+renderSubs();btns();draw();
+if(document.fonts)document.fonts.ready.then(draw);
+}
+</script>
+</body>
