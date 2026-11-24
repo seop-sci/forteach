@@ -439,19 +439,23 @@ async function exportVideo(){
   if(!ok)return exportRealtime();
   try{await exportFast()}catch(e){console.error(e);exporting=false;$('modal').hidden=true;if(e&&e.message==='cancel'){toast('내보내기를 멈췄어요');return}toast('빠른 내보내기에 실패해서 실시간 방식으로 다시 해요');return exportRealtime()}
 }
-// 음 높이를 유지한 채 속도 바꾸기 (WSOLA)
+// 음 높이를 유지한 채 속도 바꾸기 (WSOLA: 40ms 창을 75%씩 겹치고, 원본 해상도로 파형이 가장 잘 이어지는 자리를 찾음)
 function stretch(chs,rate,sr){
-  const len=chs[0].length,L=Math.max(1,Math.round(len/rate));if(Math.abs(rate-1)<1e-3||len<sr*0.1)return chs.map(c=>fit(c,L));
-  const D=4,W=Math.round(sr*0.04/D)*D,Hs=W/2,Ha=Hs*rate,del=Math.round(sr*0.012/D)*D,win=new Float32Array(W);
-  for(let i=0;i<W;i++)win[i]=0.5-0.5*Math.cos(2*Math.PI*i/W);
-  const mono=new Float32Array(Math.ceil(len/D));for(let i=0;i<mono.length;i++){let v=0;for(const c of chs)v+=c[i*D]||0;mono[i]=v}
-  const out=chs.map(()=>new Float32Array(L+W)),nrm=new Float32Array(L+W),w4=W/D;let prev=0;
+  const len=chs[0].length,L=Math.max(1,Math.round(len/rate));
+  if(Math.abs(rate-1)<1e-3||len<sr*0.1)return chs.map(c=>fit(c,L));
+  const W=Math.round(sr*0.04/2)*2,Hs=W>>2,Ha=Hs*rate,del=Math.round(sr*0.012),cw=Math.round(sr*0.02),wn=new Float32Array(W);
+  for(let i=0;i<W;i++)wn[i]=0.5-0.5*Math.cos(2*Math.PI*i/W);
+  const nc=chs.length,mono=new Float32Array(len);for(const c of chs)for(let i=0;i<len;i++)mono[i]+=c[i];
+  const out=chs.map(()=>new Float32Array(L+W)),nrm=new Float32Array(L+W);let prev=0;
+  const sc=(q,nat)=>{let s=0,e=1e-9;for(let j=0;j<cw;j+=2){const a=mono[q+j];s+=a*(mono[nat+j]||0);e+=a*a}return s/Math.sqrt(e)};
   for(let k=0,op=0;op<L;k++,op=k*Hs){
-    let pos=Math.round(k*Ha);
-    if(k>0){const nat=(prev+Hs)/D,lo=Math.max(0,(pos-del)/D|0),hi=Math.min(mono.length-w4,(pos+del)/D|0);let best=-1e30,bp=pos;
-      for(let q=lo;q<=hi;q++){let s=0;for(let j=0;j<w4;j+=2)s+=mono[q+j]*(mono[nat+j]||0);if(s>best){best=s;bp=q*D}}pos=bp}
-    pos=Math.max(0,Math.min(len-W,pos));if(pos<0)pos=0;
-    for(let i=0;i<W&&op+i<L+W;i++){const w=win[i];nrm[op+i]+=w;for(let c=0;c<chs.length;c++)out[c][op+i]+=(chs[c][pos+i]||0)*w}
+    let pos=Math.min(Math.max(0,Math.round(k*Ha)),len-W);
+    if(k>0&&len>W){const nat=prev+Hs,lo=Math.max(0,pos-del),hi=Math.min(len-W,pos+del);let best=-1e30,bp=pos;
+      for(let q=lo;q<=hi;q+=2){const s=sc(q,nat);if(s>best){best=s;bp=q}}
+      for(let q=Math.max(lo,bp-1);q<=Math.min(hi,bp+1);q++){const s=sc(q,nat);if(s>best){best=s;bp=q}}
+      pos=bp}
+    pos=Math.max(0,pos);
+    for(let i=0;i<W&&op+i<L+W;i++){const w=wn[i];nrm[op+i]+=w;for(let c=0;c<nc;c++)out[c][op+i]+=(chs[c][pos+i]||0)*w}
     prev=pos;
   }
   return out.map(o=>{for(let i=0;i<L;i++)if(nrm[i]>1e-3)o[i]/=nrm[i];return o.subarray(0,L)});
