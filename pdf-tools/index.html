@@ -72,6 +72,22 @@ aside{position:sticky;top:12px;display:flex;flex-direction:column;gap:14px}
 .view .img{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;overflow:auto;background:var(--panel);border-radius:8px}
 .view img{max-width:100%;max-height:76vh;background:#fff;box-shadow:0 2px 10px rgba(0,0,0,.3)}
 .view .row{display:flex;gap:8px;align-items:center}
+.ed{position:absolute;z-index:2;right:8px;top:8px;background:var(--acc);color:#fff;font-size:11px;font-weight:700;border-radius:5px;padding:1px 6px}
+.view{width:min(1100px,100%)}
+.etools{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.seg3{display:inline-grid;grid-auto-flow:column;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:3px;gap:3px}
+.seg3 label{display:flex;align-items:center;min-height:36px;padding:0 12px;border-radius:6px;cursor:pointer;font-size:14px;white-space:nowrap}
+.seg3 input{position:absolute;opacity:0;pointer-events:none}
+.seg3 label:has(input:checked){background:var(--acc);color:#fff;font-weight:700}
+.seg3 label:has(input:focus-visible){outline:2px solid var(--acc)}
+.ewrap{position:relative;display:inline-block;line-height:0;overflow:hidden;touch-action:none;cursor:crosshair;user-select:none}
+.ewrap img{max-width:100%;max-height:68vh;display:block;pointer-events:none}
+.bx{position:absolute;outline:1.5px dashed var(--acc);outline-offset:0}
+.bx.w{background:#fff}.bx.k{background:#000}.bx.tmp{background:rgba(29,43,216,.18)}
+.bx button{position:absolute;right:-1px;top:-1px;min-height:0;width:24px;height:24px;padding:0;border-radius:0 0 0 6px;background:var(--acc);color:#fff;border:0;font-size:15px;line-height:1}
+.crop{position:absolute;outline:2px solid #fff;box-shadow:0 0 0 1px #000,0 0 0 9999px rgba(0,0,0,.5);pointer-events:none}
+.crop.tmp{outline-style:dashed}
+.check{display:flex;gap:8px;align-items:flex-start;font-size:14px}.check input{flex:none;margin-top:4px;width:18px;height:18px;accent-color:var(--acc)}
 .toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 18px;border-radius:8px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:30;max-width:90vw}
 .toast.on{opacity:1}
 @media(max-width:900px){.wrap{grid-template-columns:minmax(0,1fr)}aside{position:static}}
@@ -98,13 +114,14 @@ aside{position:sticky;top:12px;display:flex;flex-direction:column;gap:14px}
       <button id="rotR" title="오른쪽으로 90도">↻ 오른쪽 회전</button>
       <button id="mvL" title="앞으로">← 앞으로</button>
       <button id="mvR" title="뒤로">뒤로 →</button>
+      <button id="edit">편집 (자르기, 가리기)</button>
       <button id="dup">복제</button>
       <button id="del" class="danger">삭제</button>
       <button id="undo">되돌리기</button>
       <span class="info" id="info"></span>
     </div>
     <div class="grid" id="grid"></div>
-    <p class="hint" style="margin-top:14px">페이지를 누르면 선택, Shift를 누른 채 누르면 범위 선택, 두 번 누르면 크게 보기예요. 끌어다 놓아 순서를 바꿀 수 있고, Delete로 삭제, Ctrl+Z로 되돌릴 수 있어요.</p>
+    <p class="hint" style="margin-top:14px">페이지를 누르면 선택, Shift를 누른 채 누르면 범위 선택, 두 번 누르면 편집 화면이 열려요(자르기, 가리기). 끌어다 놓아 순서를 바꿀 수 있고, Delete로 삭제, Ctrl+Z로 되돌릴 수 있어요.</p>
   </main>
 
   <aside>
@@ -121,6 +138,7 @@ aside{position:sticky;top:12px;display:flex;flex-direction:column;gap:14px}
       <h2>PDF로 저장</h2>
       <p class="hint">여러 파일을 넣었다면 지금 순서대로 하나로 합쳐져요. 사진도 PDF 페이지가 돼요.</p>
       <div class="f"><span>사진 페이지</span><select id="imgSize"><option value="a4">A4에 맞추기</option><option value="orig">사진 크기 그대로</option></select></div>
+      <label class="check"><input type="checkbox" id="flat" checked><span>가린 부분을 완전히 지우기<br><span class="hint">가린 페이지를 이미지로 바꿔 저장해서, 상자 아래 글자를 복사하거나 찾아낼 수 없게 해요. 대신 그 페이지의 글자는 선택되지 않아요.</span></span></label>
       <button class="pri" id="savePdf">PDF 저장</button>
     </div>
 
@@ -141,7 +159,15 @@ aside{position:sticky;top:12px;display:flex;flex-direction:column;gap:14px}
 </div>
 
 <div class="modal" id="busy" hidden><div class="mbox"><h2 id="busyT">작업 중</h2><div class="prog"><i id="busyBar"></i></div><p class="hint" id="busyM"></p></div></div>
-<div class="modal" id="viewer" hidden><div class="view"><div class="row"><b id="vT"></b><span class="sp"></span><button id="vPrev">← 이전</button><button id="vNext">다음 →</button><button id="vClose">닫기</button></div><div class="img"><img id="vImg" alt="페이지 크게 보기"></div></div></div>
+<div class="modal" id="viewer" hidden><div class="view">
+  <div class="row"><b id="vT"></b><span class="sp"></span><button id="vPrev">← 이전</button><button id="vNext">다음 →</button><button id="vClose" class="pri">완료</button></div>
+  <div class="etools">
+    <div class="seg3" role="group" aria-label="도구"><label><input type="radio" name="tool" value="w" checked>흰색으로 가리기</label><label><input type="radio" name="tool" value="k">검은색으로 가리기</label><label><input type="radio" name="tool" value="crop">자르기</label></div>
+    <button id="eUndo">되돌리기</button><button id="eClearBox">가리기 모두 지우기</button><button id="eClearCrop">자르기 해제</button><button id="eCopy" title="작업대에서 선택한 다른 페이지에도 같은 자리에 똑같이 적용">선택한 페이지에 똑같이</button>
+  </div>
+  <div class="img"><div class="ewrap" id="eWrap"><img id="vImg" alt="편집할 페이지"><div id="eLayer"></div></div></div>
+  <p class="hint" id="eHint">페이지 위를 드래그해서 상자를 그리세요. 상자 모서리의 ×를 누르면 지워져요.</p>
+</div></div>
 <div class="toast" id="toast"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
@@ -195,30 +221,45 @@ $('outName').addEventListener('input',e=>e.target.dataset.touched='1');
 // ---------- 썸네일
 let queue=[],working=false;
 const io=new IntersectionObserver(es=>{for(const e of es)if(e.isIntersecting){io.unobserve(e.target);want(e.target.dataset.key)}},{rootMargin:'400px'});
+const tinfo=new Map();
+const hasEd=ed=>!!(ed&&(ed.crop||(ed.boxes&&ed.boxes.length)));
+const hsh=s=>{let x=0;for(let i=0;i<s.length;i++)x=(x*31+s.charCodeAt(i))|0;return(x>>>0).toString(36)};
+function tkey(p){const k=p.src+':'+p.i+(hasEd(p.ed)?':'+hsh(JSON.stringify(p.ed)):'');tinfo.set(k,{src:p.src,i:p.i,ed:hasEd(p.ed)?JSON.parse(JSON.stringify(p.ed)):null});return k}
 function want(key){if(thumbs.has(key)){paint(key);return}if(!queue.includes(key))queue.push(key);pump()}
 async function pump(){
   if(working)return;working=true;
   while(queue.length){const key=queue.shift();if(thumbs.has(key))continue;
-    try{const [s,i]=key.split(':').map(Number),src=srcs.get(s);if(!src)continue;const c=await renderPage(src,i,0,240);
+    try{const t=tinfo.get(key),src=t&&srcs.get(t.src);if(!src)continue;const c=await renderPage(src,t.i,0,240,0,t.ed);
       const b=await new Promise(r=>c.toBlob(r,'image/jpeg',.82));thumbs.set(key,URL.createObjectURL(b));c.width=0;paint(key)}catch(e){console.warn(e)}}
   working=false;
 }
 function paint(key){document.querySelectorAll(`img[data-key="${key}"]`).forEach(im=>im.src=thumbs.get(key))}
-// 한 페이지를 캔버스로 그리기 (box: 긴 변 픽셀, dpi: 해상도)
-async function renderPage(src,i,rot,box,dpi){
-  const c=document.createElement('canvas'),g=c.getContext('2d');
+// 한 페이지를 캔버스로 그리기 (box: 긴 변 픽셀, dpi: 해상도, ed: 자르기와 가리기)
+async function renderPage(src,i,rot,box,dpi,ed){
+  let c=document.createElement('canvas'),g=c.getContext('2d');
+  const cr=ed&&ed.crop,fw=cr?cr.w:1,fh=cr?cr.h:1;
   if(src.kind==='pdf'){
-    const pg=await src.doc.getPage(i+1),v1=pg.getViewport({scale:1,rotation:(pg.rotate+rot)%360});
-    const sc=box?box/Math.max(v1.width,v1.height):dpi/72,vp=pg.getViewport({scale:sc,rotation:(pg.rotate+rot)%360});
+    const pg=await src.doc.getPage(i+1),v1=pg.getViewport({scale:1,rotation:pg.rotate});
+    const sc=box?Math.min(6,box/Math.max(v1.width*fw,v1.height*fh)):dpi/72,vp=pg.getViewport({scale:sc,rotation:pg.rotate});
     c.width=Math.ceil(vp.width);c.height=Math.ceil(vp.height);g.fillStyle='#fff';g.fillRect(0,0,c.width,c.height);
     await pg.render({canvasContext:g,viewport:vp}).promise;
   }else{
-    const sw=rot%180?src.h:src.w,sh=rot%180?src.w:src.h,sc=box?Math.min(1,box/Math.max(sw,sh)):1;
-    c.width=Math.round(sw*sc);c.height=Math.round(sh*sc);g.fillStyle='#fff';g.fillRect(0,0,c.width,c.height);
-    g.translate(c.width/2,c.height/2);g.rotate(rot*Math.PI/180);g.drawImage(src.bmp,-src.w*sc/2,-src.h*sc/2,src.w*sc,src.h*sc);
+    const sc=box?Math.min(1,box/Math.max(src.w*fw,src.h*fh)):1;
+    c.width=Math.max(1,Math.round(src.w*sc));c.height=Math.max(1,Math.round(src.h*sc));g.fillStyle='#fff';g.fillRect(0,0,c.width,c.height);g.drawImage(src.bmp,0,0,c.width,c.height);
   }
+  if(ed){
+    for(const b of ed.boxes||[]){g.fillStyle=b.c==='k'?'#000':'#fff';g.fillRect(Math.floor(b.x*c.width),Math.floor(b.y*c.height),Math.ceil(b.w*c.width)+1,Math.ceil(b.h*c.height)+1)}
+    if(cr){const n=document.createElement('canvas'),x=Math.round(cr.x*c.width),y=Math.round(cr.y*c.height);n.width=Math.max(1,Math.round(cr.w*c.width));n.height=Math.max(1,Math.round(cr.h*c.height));
+      n.getContext('2d').drawImage(c,x,y,n.width,n.height,0,0,n.width,n.height);c.width=0;c=n}
+  }
+  if(rot){const r=document.createElement('canvas');r.width=rot%180?c.height:c.width;r.height=rot%180?c.width:c.height;const rg=r.getContext('2d');
+    rg.translate(r.width/2,r.height/2);rg.rotate(rot*Math.PI/180);rg.drawImage(c,-c.width/2,-c.height/2);c.width=0;c=r}
   return c;
 }
+// 화면 방향(회전 r) 좌표와 원래 방향 좌표 바꾸기 (0~1, 위쪽 기준)
+const fwd=(u,v,r)=>r===90?[1-v,u]:r===180?[1-u,1-v]:r===270?[v,1-u]:[u,v];
+const inv=(u,v,r)=>r===90?[v,1-u]:r===180?[1-u,1-v]:r===270?[1-v,u]:[u,v];
+function mapRect(q,f,r){const [a,b]=f(q.x,q.y,r),[c,d]=f(q.x+q.w,q.y+q.h,r);return{x:Math.min(a,c),y:Math.min(b,d),w:Math.abs(c-a),h:Math.abs(d-b)}}
 
 // ---------- 화면 그리기
 const grid=$('grid');
@@ -233,8 +274,8 @@ const EMPTY=`<div class="empty" id="empty">
 <div class="row"><label class="btn pri">파일 고르기<input type="file" accept="application/pdf,.pdf,image/*" multiple hidden id="fileIn2"></label><button id="sample">예시 PDF로 해 보기</button></div></div></div>`;
 function render(){
   if(!pages.length){grid.innerHTML=EMPTY;$('fileIn2').onchange=e=>{addFiles(e.target.files);e.target.value=''};$('sample').onclick=sample}
-  else grid.innerHTML=pages.map((p,n)=>{const s=srcs.get(p.src),key=p.src+':'+p.i,lbl=s.kind==='pdf'?`${s.name} ${p.i+1}쪽`:s.name;
-    return `<div class="pg${sel.has(p.id)?' sel':''}" draggable="true" data-id="${p.id}" title="${esc(lbl)}"><span class="ck"></span><div class="th"><img alt="" data-key="${key}" style="transform:rotate(${p.rot}deg)"${thumbs.has(key)?` src="${thumbs.get(key)}"`:''}></div><div class="meta"><span class="no">${n+1}</span><span class="nm">${esc(lbl)}</span></div></div>`}).join('');
+  else grid.innerHTML=pages.map((p,n)=>{const s=srcs.get(p.src),key=tkey(p),lbl=s.kind==='pdf'?`${s.name} ${p.i+1}쪽`:s.name;
+    return `<div class="pg${sel.has(p.id)?' sel':''}" draggable="true" data-id="${p.id}" title="${esc(lbl)}"><span class="ck"></span>${hasEd(p.ed)?'<span class="ed">편집됨</span>':''}<div class="th"><img alt="" data-key="${key}" style="transform:rotate(${p.rot}deg)"${thumbs.has(key)?` src="${thumbs.get(key)}"`:''}></div><div class="meta"><span class="no">${n+1}</span><span class="nm">${esc(lbl)}</span></div></div>`}).join('');
   grid.querySelectorAll('img[data-key]:not([src])').forEach(im=>io.observe(im));
   info();
 }
@@ -242,7 +283,7 @@ function info(){
   sel=new Set([...sel].filter(id=>pages.some(p=>p.id===id)));
   $('info').textContent=pages.length?`모두 ${pages.length}쪽${sel.size?`, ${sel.size}쪽 선택`:''}`:'';
   $('scopeInfo').textContent=scopeVal()==='sel'?`${sel.size}쪽`:`${pages.length}쪽`;
-  const has=sel.size>0;['rotL','rotR','mvL','mvR','dup','del'].forEach(id=>$(id).disabled=!has);
+  const has=sel.size>0;['rotL','rotR','mvL','mvR','dup','del','edit'].forEach(id=>$(id).disabled=!has);
   $('selAll').disabled=$('selNone').disabled=!pages.length;$('undo').disabled=!undoS.length;
   ['savePdf','saveSplit','saveImg'].forEach(id=>$(id).disabled=!pages.length);
 }
@@ -255,7 +296,7 @@ const selected=()=>pages.filter(p=>sel.has(p.id));
 function rotate(d){if(!sel.size)return;push();for(const p of selected())p.rot=(p.rot+d+360)%360;
   grid.querySelectorAll('.pg.sel img').forEach(im=>{const p=pages.find(x=>x.id==im.closest('.pg').dataset.id);im.style.transform=`rotate(${p.rot}deg)`});info()}
 function remove(){if(!sel.size)return;push();const n=sel.size;pages=pages.filter(p=>!sel.has(p.id));sel.clear();render();toast(`${n}쪽을 지웠어요. 되돌리기로 살릴 수 있어요`)}
-function dup(){if(!sel.size)return;push();const out=[];for(const p of pages){out.push(p);if(sel.has(p.id))out.push({...p,id:pid++})}pages=out;render()}
+function dup(){if(!sel.size)return;push();const out=[];for(const p of pages){out.push(p);if(sel.has(p.id))out.push({...JSON.parse(JSON.stringify(p)),id:pid++})}pages=out;render()}
 function move(d){if(!sel.size)return;push();
   if(d<0){for(let i=1;i<pages.length;i++)if(sel.has(pages[i].id)&&!sel.has(pages[i-1].id))[pages[i-1],pages[i]]=[pages[i],pages[i-1]]}
   else{for(let i=pages.length-2;i>=0;i--)if(sel.has(pages[i].id)&&!sel.has(pages[i+1].id))[pages[i+1],pages[i]]=[pages[i],pages[i+1]]}
@@ -269,7 +310,8 @@ grid.addEventListener('click',e=>{const el=e.target.closest('.pg');if(!el)return
   if(e.shiftKey&&last!=null){const a=pages.findIndex(p=>p.id===last),b=pages.findIndex(p=>p.id===id);if(a>=0&&b>=0){const[x,y]=a<b?[a,b]:[b,a];for(let i=x;i<=y;i++)sel.add(pages[i].id)}}
   else{sel.has(id)?sel.delete(id):sel.add(id)}
   last=id;refreshSel()});
-grid.addEventListener('dblclick',e=>{const el=e.target.closest('.pg');if(el){sel.add(+el.dataset.id);refreshSel();view(pages.findIndex(p=>p.id==el.dataset.id))}});
+grid.addEventListener('dblclick',e=>{const el=e.target.closest('.pg');if(el){sel.add(+el.dataset.id);refreshSel();openEd(+el.dataset.id)}});
+$('edit').onclick=()=>{const p=selected()[0];if(p)openEd(p.id)};
 
 // 끌어다 놓기 (순서 바꾸기와 파일 추가)
 let dragIds=null,dropAt=null;
@@ -289,7 +331,8 @@ document.addEventListener('drop',e=>{e.preventDefault();grid.classList.remove('o
 
 // 단축키
 document.addEventListener('keydown',e=>{if(/INPUT|SELECT|TEXTAREA/.test(e.target.tagName))return;
-  if(!$('viewer').hidden){if(e.key==='Escape')$('vClose').click();if(e.key==='ArrowLeft')$('vPrev').click();if(e.key==='ArrowRight')$('vNext').click();return}
+  if(!$('viewer').hidden){if(e.key==='Escape')$('vClose').click();if(e.key==='ArrowLeft')$('vPrev').click();if(e.key==='ArrowRight')$('vNext').click();
+    if((e.ctrlKey||e.metaKey)&&e.code==='KeyZ'){e.preventDefault();$('eUndo').click()}return}
   const mod=e.ctrlKey||e.metaKey;
   if(mod&&e.code==='KeyZ'){e.preventDefault();undo()}
   else if(mod&&e.code==='KeyA'){e.preventDefault();$('selAll').click()}
@@ -298,13 +341,53 @@ document.addEventListener('keydown',e=>{if(/INPUT|SELECT|TEXTAREA/.test(e.target
   else if(e.code==='KeyR'&&!mod)rotate(e.shiftKey?-90:90);
 });
 
-// 크게 보기
-let vi=0;
-async function view(i){if(i<0||i>=pages.length)return;vi=i;const p=pages[i],s=srcs.get(p.src);$('viewer').hidden=false;
-  $('vT').textContent=`${i+1} / ${pages.length}쪽`;$('vImg').removeAttribute('src');
-  const c=await renderPage(s,p.i,p.rot,1400);if(vi!==i)return;$('vImg').src=c.toDataURL('image/jpeg',.9);c.width=0}
-$('vPrev').onclick=()=>view(vi-1);$('vNext').onclick=()=>view(vi+1);$('vClose').onclick=()=>$('viewer').hidden=true;
-$('viewer').addEventListener('click',e=>{if(e.target.id==='viewer')$('vClose').click()});
+// 페이지 편집 (자르기, 가리기)
+let eid=null,etok=0,drawSt=null;
+const ePage=()=>pages.find(p=>p.id===eid);
+const tool=()=>document.querySelector('input[name=tool]:checked').value;
+const pct=v=>(v*100).toFixed(3)+'%';
+async function openEd(id){
+  const p=pages.find(x=>x.id===id);if(!p)return;eid=id;const tok=++etok,i=pages.indexOf(p);
+  $('viewer').hidden=false;$('vT').textContent=`${i+1} / ${pages.length}쪽 편집`;$('vImg').removeAttribute('src');$('eLayer').innerHTML='';
+  const c=await renderPage(srcs.get(p.src),p.i,p.rot,1600,0,null);if(tok!==etok)return;
+  $('vImg').src=c.toDataURL('image/jpeg',.92);c.width=0;drawLayer();
+}
+function drawLayer(tmp){
+  const p=ePage();if(!p)return;const ed=p.ed||{},r=p.rot;let html='';
+  (ed.boxes||[]).forEach((b,k)=>{const d=mapRect(b,fwd,r);html+=`<div class="bx ${b.c==='k'?'k':'w'}" style="left:${pct(d.x)};top:${pct(d.y)};width:${pct(d.w)};height:${pct(d.h)}"><button data-k="${k}" title="이 상자 지우기" aria-label="이 상자 지우기">×</button></div>`});
+  if(ed.crop){const d=mapRect(ed.crop,fwd,r);html+=`<div class="crop" style="left:${pct(d.x)};top:${pct(d.y)};width:${pct(d.w)};height:${pct(d.h)}"></div>`}
+  if(tmp)html+=tmp.crop?`<div class="crop tmp" style="left:${pct(tmp.x)};top:${pct(tmp.y)};width:${pct(tmp.w)};height:${pct(tmp.h)}"></div>`:`<div class="bx tmp" style="left:${pct(tmp.x)};top:${pct(tmp.y)};width:${pct(tmp.w)};height:${pct(tmp.h)}"></div>`;
+  $('eLayer').innerHTML=html;
+}
+function afterEdit(){render();drawLayer()}
+const ew=$('eWrap');
+const ptAt=e=>{const r=$('vImg').getBoundingClientRect();return[Math.max(0,Math.min(1,(e.clientX-r.left)/r.width)),Math.max(0,Math.min(1,(e.clientY-r.top)/r.height))]};
+ew.addEventListener('pointerdown',e=>{
+  const btn=e.target.closest('button[data-k]');
+  if(btn){const p=ePage();push();p.ed.boxes.splice(+btn.dataset.k,1);afterEdit();return}
+  if(!$('vImg').src)return;e.preventDefault();ew.setPointerCapture(e.pointerId);drawSt=ptAt(e);
+});
+ew.addEventListener('pointermove',e=>{if(!drawSt)return;const [u,v]=ptAt(e),q={x:Math.min(u,drawSt[0]),y:Math.min(v,drawSt[1]),w:Math.abs(u-drawSt[0]),h:Math.abs(v-drawSt[1]),crop:tool()==='crop'};drawLayer(q)});
+ew.addEventListener('pointerup',e=>{
+  if(!drawSt)return;const [u,v]=ptAt(e),q={x:Math.min(u,drawSt[0]),y:Math.min(v,drawSt[1]),w:Math.abs(u-drawSt[0]),h:Math.abs(v-drawSt[1])};drawSt=null;
+  if(q.w<0.008||q.h<0.008){drawLayer();return}
+  const p=ePage();push();p.ed=p.ed||{boxes:[],crop:null};p.ed.boxes=p.ed.boxes||[];
+  const b=mapRect(q,inv,p.rot);
+  if(tool()==='crop'){p.ed.crop=b;toast('자른 부분만 남겨요. 다시 그리면 새로 정해져요')}
+  else p.ed.boxes.push({...b,c:tool()});
+  afterEdit();
+});
+ew.addEventListener('pointercancel',()=>{drawSt=null;drawLayer()});
+$('eUndo').onclick=()=>{undo();if(!ePage()){$('viewer').hidden=true;return}drawLayer()};
+$('eClearBox').onclick=()=>{const p=ePage();if(!p||!p.ed||!p.ed.boxes.length)return;push();p.ed.boxes=[];afterEdit()};
+$('eClearCrop').onclick=()=>{const p=ePage();if(!p||!p.ed||!p.ed.crop)return;push();p.ed.crop=null;afterEdit()};
+$('eCopy').onclick=()=>{const p=ePage();if(!hasEd(p.ed)){toast('먼저 이 페이지에 상자를 그리거나 자르세요');return}
+  const t=selected().filter(x=>x.id!==p.id);if(!t.length){toast('작업대에서 같은 편집을 할 다른 페이지들을 먼저 선택해 주세요');return}
+  push();for(const x of t)x.ed=JSON.parse(JSON.stringify(p.ed));afterEdit();toast(`선택한 ${t.length}쪽에도 똑같이 적용했어요`)};
+document.querySelectorAll('input[name=tool]').forEach(r=>r.onchange=()=>{$('eHint').textContent=tool()==='crop'?'남길 부분을 드래그로 감싸세요. 바깥쪽은 잘려 나가요.':'페이지 위를 드래그해서 상자를 그리세요. 상자 모서리의 ×를 누르면 지워져요.'});
+const stepEd=d=>{const i=pages.findIndex(p=>p.id===eid)+d;if(i>=0&&i<pages.length)openEd(pages[i].id)};
+$('vPrev').onclick=()=>stepEd(-1);$('vNext').onclick=()=>stepEd(1);$('vClose').onclick=()=>{$('viewer').hidden=true;etok++};
+$('viewer').addEventListener('pointerdown',e=>{if(e.target.id==='viewer')$('vClose').click()});
 
 // ---------- 저장
 const scopeVal=()=>document.querySelector('input[name=scope]:checked').value;
@@ -315,16 +398,30 @@ function busy(t,f,m){$('busy').hidden=false;$('busyT').textContent=t;$('busyBar'
 const busyOff=()=>$('busy').hidden=true;
 
 async function buildPdf(list,onp){
-  const {PDFDocument,degrees}=PDFLib,out=await PDFDocument.create();
+  const {PDFDocument,degrees,rgb}=PDFLib,out=await PDFDocument.create();
   for(const [k,p] of list.entries()){
     const s=srcs.get(p.src);onp&&onp(k/list.length);
     if(s.kind==='pdf'){
       s.lib=s.lib||await PDFDocument.load(s.bytes,{ignoreEncryption:true});
-      const [cp]=await out.copyPages(s.lib,[p.i]);cp.setRotation(degrees((cp.getRotation().angle+p.rot)%360));out.addPage(cp);
+      const ed=hasEd(p.ed)?p.ed:null;
+      if(ed&&ed.boxes&&ed.boxes.length&&$('flat').checked){
+        // 가린 페이지는 이미지로 굳혀서 글자까지 지움
+        const c=await renderPage(s,p.i,p.rot,0,200,ed),jb=await new Promise(r=>c.toBlob(r,'image/jpeg',.92));
+        const im=await out.embedJpg(new Uint8Array(await jb.arrayBuffer())),W=c.width*72/200,H=c.height*72/200;c.width=0;
+        out.addPage([W,H]).drawImage(im,{x:0,y:0,width:W,height:H});continue;
+      }
+      const [cp]=await out.copyPages(s.lib,[p.i]),R0=cp.getRotation().angle%360;cp.setRotation(degrees((R0+p.rot)%360));
+      if(ed){const cb=cp.getCropBox(),toU=q=>{const t=mapRect(q,inv,R0);return{x:cb.x+t.x*cb.width,y:cb.y+(1-t.y-t.h)*cb.height,width:t.w*cb.width,height:t.h*cb.height}};
+        for(const b of ed.boxes||[]){const r=toU(b);cp.drawRectangle({...r,color:b.c==='k'?rgb(0,0,0):rgb(1,1,1)})}
+        if(ed.crop){const r=toU(ed.crop);cp.setCropBox(r.x,r.y,r.width,r.height)}}
+      out.addPage(cp);
     }else{
-      const im=s.fmt==='png'?await out.embedPng(s.bytes):await out.embedJpg(s.bytes);let W,H,x,y,w,h;
-      if($('imgSize').value==='a4'){const land=s.w>s.h;W=land?841.89:595.28;H=land?595.28:841.89;const sc=Math.min(W/s.w,H/s.h);w=s.w*sc;h=s.h*sc;x=(W-w)/2;y=(H-h)/2}
-      else{W=w=s.w*.75;H=h=s.h*.75;x=y=0}
+      const ed=hasEd(p.ed)?p.ed:null;let im,iw=s.w,ih=s.h;
+      if(ed){const c=await renderPage(s,0,0,0,0,ed),jb=await new Promise(r=>c.toBlob(r,'image/png'));im=await out.embedPng(new Uint8Array(await jb.arrayBuffer()));iw=c.width;ih=c.height;c.width=0}
+      else im=s.fmt==='png'?await out.embedPng(s.bytes):await out.embedJpg(s.bytes);
+      let W,H,x,y,w,h;
+      if($('imgSize').value==='a4'){const land=iw>ih;W=land?841.89:595.28;H=land?595.28:841.89;const sc=Math.min(W/iw,H/ih);w=iw*sc;h=ih*sc;x=(W-w)/2;y=(H-h)/2}
+      else{W=w=iw*.75;H=h=ih*.75;x=y=0}
       const pg=out.addPage([W,H]);pg.drawImage(im,{x,y,width:w,height:h});if(p.rot)pg.setRotation(degrees(p.rot));
     }
   }
@@ -353,7 +450,7 @@ $('saveSplit').onclick=()=>run(async()=>{const l=target();if(!l)return;const n=+
 $('saveImg').onclick=()=>run(async()=>{const l=target();if(!l)return;
   const fm=$('imgFmt').value,dpi=+$('dpi').value,mime=fm==='png'?'image/png':'image/jpeg',files=[];
   for(const [k,p] of l.entries()){busy('이미지 만드는 중',k/l.length,`${k+1} / ${l.length}쪽`);
-    const c=await renderPage(srcs.get(p.src),p.i,p.rot,0,dpi);const b=await new Promise(r=>c.toBlob(r,mime,.9));c.width=0;files.push(b)}
+    const c=await renderPage(srcs.get(p.src),p.i,p.rot,0,dpi,hasEd(p.ed)?p.ed:null);const b=await new Promise(r=>c.toBlob(r,mime,.9));c.width=0;files.push(b)}
   if(files.length===1)return saveFile(files[0],`${base()}.${fm}`);
   const zip=new JSZip();files.forEach((b,k)=>zip.file(`${base()}_${pad(k+1,files.length)}.${fm}`,b));
   busy('ZIP으로 묶는 중',1,'');await saveFile(await zip.generateAsync({type:'blob'}),`${base()}_이미지.zip`)});
