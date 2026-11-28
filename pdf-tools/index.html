@@ -139,6 +139,8 @@ aside{position:sticky;top:12px;display:flex;flex-direction:column;gap:14px}
       <p class="hint">여러 파일을 넣었다면 지금 순서대로 하나로 합쳐져요. 사진도 PDF 페이지가 돼요.</p>
       <div class="f"><span>사진 페이지</span><select id="imgSize"><option value="a4">A4에 맞추기</option><option value="orig">사진 크기 그대로</option></select></div>
       <label class="check"><input type="checkbox" id="flat" checked><span>가린 부분을 완전히 지우기<br><span class="hint">가린 페이지를 이미지로 바꿔 저장해서, 상자 아래 글자를 복사하거나 찾아낼 수 없게 해요. 대신 그 페이지의 글자는 선택되지 않아요.</span></span></label>
+      <div class="f"><span>용량 줄이기</span><select id="squeeze"><option value="0">줄이지 않기</option><option value="1">조금 (화질 거의 그대로)</option><option value="2" selected>보통 (화면과 인쇄에 충분)</option><option value="3">많이 (화면으로 보기용)</option></select></div>
+      <p class="hint">PDF 안의 사진만 필요한 해상도로 줄이고 다시 압축해요. 글자와 선은 그대로라서 선명해요. 스캔본이나 사진이 많은 PDF일수록 많이 줄어들어요.</p>
       <button class="pri" id="savePdf">PDF 저장</button>
     </div>
 
@@ -435,16 +437,76 @@ async function saveFile(blob,name){
 const pad=(n,len)=>String(n).padStart(Math.max(2,String(len).length),'0');
 async function run(fn){try{await fn()}catch(e){console.error(e);toast('작업 중 문제가 생겼어요. 다른 파일로 다시 해 보세요')}finally{busyOff()}}
 
+// ---------- 용량 줄이기: 사진만 다시 압축하고, 압축 안 된 내용은 deflate로 묶음
+const SQ={1:{dpi:220,q:.86},2:{dpi:150,q:.8},3:{dpi:110,q:.7}};
+const mb=n=>n>=1048576?(n/1048576).toFixed(1)+'MB':Math.max(1,Math.round(n/1024))+'KB';
+const pipeBytes=async(u8,ts)=>new Uint8Array(await new Response(new Blob([u8]).stream().pipeThrough(ts)).arrayBuffer());
+function unPredict(d,w,nc,pred){if(pred<10)return d;const rl=w*nc,rows=Math.floor(d.length/(rl+1)),o=new Uint8Array(rows*rl);
+  for(let r=0;r<rows;r++){const t=d[r*(rl+1)],s=r*(rl+1)+1,b=r*rl;
+    for(let i=0;i<rl;i++){const x=d[s+i],a=i>=nc?o[b+i-nc]:0,up=r?o[b-rl+i]:0,c=(r&&i>=nc)?o[b-rl+i-nc]:0;let v;
+      if(t===0)v=x;else if(t===1)v=x+a;else if(t===2)v=x+up;else if(t===3)v=x+((a+up)>>1);else{const pp=a+up-c,pa=Math.abs(pp-a),pb=Math.abs(pp-up),pc=Math.abs(pp-c);v=x+(pa<=pb&&pa<=pc?a:pb<=pc?up:c)}
+      o[b+i]=v&255}}return o}
+async function squeezePdf(bytes,level,onp){
+  const {PDFDocument,PDFName,PDFRawStream,PDFArray,PDFDict,PDFNumber}=PDFLib,{dpi,q}=SQ[level];
+  const doc=await PDFDocument.load(bytes,{ignoreEncryption:true}),ctx=doc.context,N=k=>PDFName.of(k);
+  let maxIn=0;for(const pg of doc.getPages()){const s=pg.getSize();maxIn=Math.max(maxIn,s.width/72,s.height/72);pg.node.delete(N('Thumb'))}
+  const cap=Math.max(600,Math.round(maxIn*dpi)),objs=ctx.enumerateIndirectObjects();let done=0,shrunk=0;
+  const look=o=>o instanceof PDFLib.PDFRef?ctx.lookup(o):o;
+  const nameOf=o=>{o=look(o);return o instanceof PDFName?o.asString().slice(1):null};
+  for(const [ref,obj] of objs){
+    done++;if(done%20===0)onp&&onp(done/objs.length);
+    if(!(obj instanceof PDFRawStream))continue;const d=obj.dict;
+    let filt=look(d.get(N('Filter'))),fl=filt instanceof PDFArray?filt.asArray().map(nameOf):filt?[nameOf(filt)]:[];
+    if(nameOf(d.get(N('Subtype')))!=='Image'){
+      // 압축 안 된 내용 스트림은 deflate로 압축
+      if(!fl.length&&obj.contents.length>2048){try{const z=await pipeBytes(obj.contents,new CompressionStream('deflate'));if(z.length<obj.contents.length*.9){d.set(N('Filter'),N('FlateDecode'));ctx.assign(ref,PDFRawStream.of(d,z))}}catch(e){}}
+      continue}
+    try{
+      if(d.get(N('ImageMask'))||d.get(N('Decode'))||obj.contents.length<30000)continue;
+      const W=look(d.get(N('Width'))).asNumber(),H=look(d.get(N('Height'))).asNumber(),bpc=(look(d.get(N('BitsPerComponent')))||{asNumber:()=>8}).asNumber();
+      let cs=look(d.get(N('ColorSpace'))),nc=0;const csn=nameOf(cs);
+      if(csn==='DeviceRGB'||csn==='CalRGB')nc=3;else if(csn==='DeviceGray'||csn==='CalGray')nc=1;
+      else if(cs instanceof PDFArray&&nameOf(cs.get(0))==='ICCBased'){const ic=look(cs.get(1)),n=look(ic.dict.get(N('N')));nc=n?n.asNumber():0}
+      if(nc!==1&&nc!==3||bpc!==8)continue;
+      let bmp;
+      if(fl.length===1&&fl[0]==='DCTDecode'){bmp=await createImageBitmap(new Blob([obj.contents],{type:'image/jpeg'}))}
+      else if(fl.length===1&&fl[0]==='FlateDecode'){
+        const dp=look(d.get(N('DecodeParms'))),pr=dp instanceof PDFDict&&dp.get(N('Predictor'))?look(dp.get(N('Predictor'))).asNumber():1;
+        if(pr>1&&pr<10)continue;
+        const raw=unPredict(await pipeBytes(obj.contents,new DecompressionStream('deflate')),W,nc,pr);if(raw.length<W*H*nc)continue;
+        const id=new ImageData(W,H),px=id.data;for(let i=0,j=0;i<W*H;i++,j+=nc){px[i*4]=raw[j];px[i*4+1]=raw[j+(nc>1?1:0)];px[i*4+2]=raw[j+(nc>1?2:0)];px[i*4+3]=255}
+        bmp=await createImageBitmap(id)}
+      else continue;
+      const sc=Math.min(1,cap/Math.max(W,H)),nw=Math.max(1,Math.round(W*sc)),nh=Math.max(1,Math.round(H*sc));
+      const c=document.createElement('canvas');c.width=nw;c.height=nh;const g=c.getContext('2d');g.imageSmoothingQuality='high';g.drawImage(bmp,0,0,nw,nh);bmp.close&&bmp.close();
+      const jb=new Uint8Array(await (await new Promise(r=>c.toBlob(r,'image/jpeg',q))).arrayBuffer());c.width=0;
+      if(jb.length>=obj.contents.length*.9)continue;
+      const nd=ctx.obj({Type:'XObject',Subtype:'Image',Width:nw,Height:nh,ColorSpace:'DeviceRGB',BitsPerComponent:8,Filter:'DCTDecode'});
+      for(const k of ['SMask','Mask','Intent','Interpolate','OC']){const v=d.get(N(k));if(v)nd.set(N(k),v)}
+      ctx.assign(ref,PDFRawStream.of(nd,jb));shrunk++;
+    }catch(e){console.warn('image skipped',e)}
+  }
+  return {bytes:await doc.save({useObjectStreams:true}),shrunk};
+}
+async function makePdf(list,label){
+  const b=await buildPdf(list,f=>busy('PDF 만드는 중',f*.5,`${Math.round(f*list.length)+1} / ${list.length}쪽`));
+  const lv=+$('squeeze').value;if(!lv)return{bytes:b,before:b.length};
+  try{const r=await squeezePdf(b,lv,f=>busy('용량 줄이는 중',.5+f*.5,label||'사진을 다시 압축하고 있어요'));
+    return r.bytes.length<b.length?{bytes:r.bytes,before:b.length}:{bytes:b,before:b.length}}
+  catch(e){console.warn(e);return{bytes:b,before:b.length,failed:true}}
+}
 $('savePdf').onclick=()=>run(async()=>{const l=target();if(!l)return;
-  const b=await buildPdf(l,f=>busy('PDF 만드는 중',f,`${Math.round(f*l.length)+1} / ${l.length}쪽`));
-  await saveFile(new Blob([b],{type:'application/pdf'}),base()+'.pdf')});
+  const r=await makePdf(l);
+  await saveFile(new Blob([r.bytes],{type:'application/pdf'}),base()+'.pdf');
+  if(+$('squeeze').value){const orig=[...new Set(l.map(p=>p.src))].reduce((a,s)=>a+srcs.get(s).bytes.length,0),before=Math.max(orig,r.before),pc=Math.round((1-r.bytes.length/before)*100);
+    setTimeout(()=>toast(r.failed?'용량 줄이기에 실패해서 원래대로 저장했어요':pc>=3?`용량 ${mb(before)} → ${mb(r.bytes.length)} (${pc}% 줄었어요)`:`더 줄일 사진이 거의 없어서 ${mb(r.bytes.length)}로 저장했어요. 글자 위주 PDF는 많이 줄지 않아요`),400)}});
 
 $('saveSplit').onclick=()=>run(async()=>{const l=target();if(!l)return;const n=+$('splitN').value,parts=[];
   for(let i=0;i<l.length;i+=n)parts.push(l.slice(i,i+n));
-  if(parts.length===1){const b=await buildPdf(parts[0]);return saveFile(new Blob([b],{type:'application/pdf'}),base()+'.pdf')}
+  if(parts.length===1){const r=await makePdf(parts[0]);return saveFile(new Blob([r.bytes],{type:'application/pdf'}),base()+'.pdf')}
   const zip=new JSZip();
   for(const [k,part] of parts.entries()){busy('PDF 나누는 중',k/parts.length,`${k+1} / ${parts.length}개 파일`);
-    const a=l.indexOf(part[0])+1,b=a+part.length-1;zip.file(`${base()}_${pad(a,l.length)}${b>a?'-'+pad(b,l.length):''}쪽.pdf`,await buildPdf(part))}
+    const a=l.indexOf(part[0])+1,b=a+part.length-1;zip.file(`${base()}_${pad(a,l.length)}${b>a?'-'+pad(b,l.length):''}쪽.pdf`,(await makePdf(part,`${k+1} / ${parts.length}개 파일`)).bytes)}
   busy('ZIP으로 묶는 중',1,'');await saveFile(await zip.generateAsync({type:'blob'}),base()+'_나눔.zip')});
 
 $('saveImg').onclick=()=>run(async()=>{const l=target();if(!l)return;
