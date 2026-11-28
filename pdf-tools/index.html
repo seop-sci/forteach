@@ -139,7 +139,8 @@ aside{position:sticky;top:12px;display:flex;flex-direction:column;gap:14px}
       <p class="hint">여러 파일을 넣었다면 지금 순서대로 하나로 합쳐져요. 사진도 PDF 페이지가 돼요.</p>
       <div class="f"><span>사진 페이지</span><select id="imgSize"><option value="a4">A4에 맞추기</option><option value="orig">사진 크기 그대로</option></select></div>
       <label class="check"><input type="checkbox" id="flat" checked><span>가린 부분을 완전히 지우기<br><span class="hint">가린 페이지를 이미지로 바꿔 저장해서, 상자 아래 글자를 복사하거나 찾아낼 수 없게 해요. 대신 그 페이지의 글자는 선택되지 않아요.</span></span></label>
-      <div class="f"><span>용량 줄이기</span><select id="squeeze"><option value="0">줄이지 않기</option><option value="1">조금 (화질 거의 그대로)</option><option value="2" selected>보통 (화면과 인쇄에 충분)</option><option value="3">많이 (화면으로 보기용)</option></select></div>
+      <div class="f"><span>용량 줄이기</span><select id="squeeze"><option value="0">줄이지 않기</option><option value="1">조금 (화질 거의 그대로)</option><option value="2" selected>보통 (화면과 인쇄에 충분)</option><option value="3">많이 (화면으로 보기용)</option><option value="t">목표 용량에 맞추기</option></select></div>
+      <div class="f" id="tgtRow" hidden><span>목표 용량</span><span style="display:flex;gap:6px;align-items:center"><input type="number" id="tgtMB" value="100" min="1" step="1" style="width:7em">MB 이하</span></div>
       <p class="hint">PDF 안의 사진만 필요한 해상도로 줄이고 다시 압축해요. 글자와 선은 그대로라서 선명해요. 스캔본이나 사진이 많은 PDF일수록 많이 줄어들어요.</p>
       <button class="pri" id="savePdf">PDF 저장</button>
     </div>
@@ -219,6 +220,7 @@ async function addFiles(list){
   render();
 }
 $('outName').addEventListener('input',e=>e.target.dataset.touched='1');
+$('squeeze').addEventListener('change',e=>{$('tgtRow').hidden=e.target.value!=='t'});
 
 // ---------- 썸네일
 let queue=[],working=false;
@@ -401,18 +403,22 @@ const busyOff=()=>$('busy').hidden=true;
 
 async function buildPdf(list,onp){
   const {PDFDocument,degrees,rgb}=PDFLib,out=await PDFDocument.create();
+  const flatOn=$('flat').checked,need=new Map(),got=new Map();
+  for(const p of list){const s=srcs.get(p.src),ed=hasEd(p.ed)?p.ed:null;if(s.kind!=='pdf'||(ed&&ed.boxes&&ed.boxes.length&&flatOn))continue;if(!need.has(s.id))need.set(s.id,[]);need.get(s.id).push(p)}
+  for(const [sid2,ps] of need){const s=srcs.get(sid2);s.lib=s.lib||await PDFDocument.load(s.bytes,{ignoreEncryption:true});
+    const cps=await out.copyPages(s.lib,ps.map(p=>p.i));ps.forEach((p,k)=>got.set(p,cps[k]))}
   for(const [k,p] of list.entries()){
     const s=srcs.get(p.src);onp&&onp(k/list.length);
     if(s.kind==='pdf'){
       s.lib=s.lib||await PDFDocument.load(s.bytes,{ignoreEncryption:true});
       const ed=hasEd(p.ed)?p.ed:null;
-      if(ed&&ed.boxes&&ed.boxes.length&&$('flat').checked){
+      if(ed&&ed.boxes&&ed.boxes.length&&flatOn){
         // 가린 페이지는 이미지로 굳혀서 글자까지 지움
         const c=await renderPage(s,p.i,p.rot,0,200,ed),jb=await new Promise(r=>c.toBlob(r,'image/jpeg',.92));
         const im=await out.embedJpg(new Uint8Array(await jb.arrayBuffer())),W=c.width*72/200,H=c.height*72/200;c.width=0;
         out.addPage([W,H]).drawImage(im,{x:0,y:0,width:W,height:H});continue;
       }
-      const [cp]=await out.copyPages(s.lib,[p.i]),R0=cp.getRotation().angle%360;cp.setRotation(degrees((R0+p.rot)%360));
+      const cp=got.get(p),R0=cp.getRotation().angle%360;cp.setRotation(degrees((R0+p.rot)%360));
       if(ed){const cb=cp.getCropBox(),toU=q=>{const t=mapRect(q,inv,R0);return{x:cb.x+t.x*cb.width,y:cb.y+(1-t.y-t.h)*cb.height,width:t.w*cb.width,height:t.h*cb.height}};
         for(const b of ed.boxes||[]){const r=toU(b);cp.drawRectangle({...r,color:b.c==='k'?rgb(0,0,0):rgb(1,1,1)})}
         if(ed.crop){const r=toU(ed.crop);cp.setCropBox(r.x,r.y,r.width,r.height)}}
@@ -446,8 +452,8 @@ function unPredict(d,w,nc,pred){if(pred<10)return d;const rl=w*nc,rows=Math.floo
     for(let i=0;i<rl;i++){const x=d[s+i],a=i>=nc?o[b+i-nc]:0,up=r?o[b-rl+i]:0,c=(r&&i>=nc)?o[b-rl+i-nc]:0;let v;
       if(t===0)v=x;else if(t===1)v=x+a;else if(t===2)v=x+up;else if(t===3)v=x+((a+up)>>1);else{const pp=a+up-c,pa=Math.abs(pp-a),pb=Math.abs(pp-up),pc=Math.abs(pp-c);v=x+(pa<=pb&&pa<=pc?a:pb<=pc?up:c)}
       o[b+i]=v&255}}return o}
-async function squeezePdf(bytes,level,onp){
-  const {PDFDocument,PDFName,PDFRawStream,PDFArray,PDFDict,PDFNumber}=PDFLib,{dpi,q}=SQ[level];
+async function squeezePdf(bytes,opt,onp){
+  const {PDFDocument,PDFName,PDFRawStream,PDFArray,PDFDict,PDFNumber}=PDFLib,{dpi,q}=typeof opt==='object'?opt:SQ[opt];
   const doc=await PDFDocument.load(bytes,{ignoreEncryption:true}),ctx=doc.context,N=k=>PDFName.of(k);
   let maxIn=0;for(const pg of doc.getPages()){const s=pg.getSize();maxIn=Math.max(maxIn,s.width/72,s.height/72);pg.node.delete(N('Thumb'))}
   const cap=Math.max(600,Math.round(maxIn*dpi)),objs=ctx.enumerateIndirectObjects();let done=0,shrunk=0;
@@ -488,17 +494,49 @@ async function squeezePdf(bytes,level,onp){
   }
   return {bytes:await doc.save({useObjectStreams:true}),shrunk};
 }
+// 원본 PDF를 손대지 않고 통째로 저장하는 경우인지
+function untouchedSrc(list){const s=srcs.get(list[0].src);if(s.kind!=='pdf'||list.length!==s.doc.numPages)return null;
+  return list.every((p,k)=>p.src===s.id&&p.i===k&&!p.rot&&!hasEd(p.ed))?s:null}
+// 모든 페이지를 이미지로 바꿔 만드는 마지막 방법 (글자 선택은 안 됨)
+async function rasterPdf(list,dpi,q,onp){
+  const out=await PDFLib.PDFDocument.create();
+  for(const [k,p] of list.entries()){onp&&onp(k/list.length);
+    const c=await renderPage(srcs.get(p.src),p.i,p.rot,0,dpi,hasEd(p.ed)?p.ed:null),jb=await new Promise(r=>c.toBlob(r,'image/jpeg',q));
+    const im=await out.embedJpg(new Uint8Array(await jb.arrayBuffer())),W=c.width*72/dpi,H=c.height*72/dpi;c.width=0;out.addPage([W,H]).drawImage(im,{x:0,y:0,width:W,height:H})}
+  return out.save({useObjectStreams:true});
+}
+const LADDER=[{dpi:200,q:.85},{dpi:150,q:.78},{dpi:120,q:.7},{dpi:96,q:.62},{dpi:72,q:.55}];
 async function makePdf(list,label){
-  const b=await buildPdf(list,f=>busy('PDF 만드는 중',f*.5,`${Math.round(f*list.length)+1} / ${list.length}쪽`));
-  const lv=+$('squeeze').value;if(!lv)return{bytes:b,before:b.length};
-  try{const r=await squeezePdf(b,lv,f=>busy('용량 줄이는 중',.5+f*.5,label||'사진을 다시 압축하고 있어요'));
-    return r.bytes.length<b.length?{bytes:r.bytes,before:b.length}:{bytes:b,before:b.length}}
-  catch(e){console.warn(e);return{bytes:b,before:b.length,failed:true}}
+  const lv=$('squeeze').value,org=untouchedSrc(list);
+  let b=await buildPdf(list,f=>busy('PDF 만드는 중',f*.3,`${Math.round(f*list.length)+1} / ${list.length}쪽`));
+  if(org&&org.bytes.length<b.length)b=org.bytes;
+  const before=org?org.bytes.length:b.length;
+  if(lv==='0')return{bytes:b,before};
+  if(lv!=='t'){
+    try{const r=await squeezePdf(b,+lv,f=>busy('용량 줄이는 중',.3+f*.7,label||'사진을 다시 압축하고 있어요'));return{bytes:r.bytes.length<b.length?r.bytes:b,before}}
+    catch(e){console.warn(e);return{bytes:b,before,failed:true}}}
+  // 목표 용량에 맞추기: 사진 화질을 한 단계씩 낮추고, 그래도 크면 페이지를 이미지로 바꿈
+  const tgt=Math.max(0.1,+$('tgtMB').value||100)*1048576;let best=b,how='';
+  if(b.length<=tgt)return{bytes:b,before,how:'원래 목표보다 작아요'};
+  for(const [k,o] of LADDER.entries()){
+    try{const r=await squeezePdf(b,o,f=>busy(`목표 ${mb(tgt)}에 맞추는 중`,.3+(k+f)/LADDER.length*.4,`${k+1}단계: 사진 ${o.dpi}dpi로 압축 (지금 ${mb(best.length)})`));
+      if(r.bytes.length<best.length){best=r.bytes;how=`사진을 ${o.dpi}dpi로 줄였어요`}
+      if(best.length<=tgt)return{bytes:best,before,how};
+      if(!r.shrunk)break}catch(e){console.warn(e);break}
+  }
+  for(const [k,d] of [150,120,96,72].entries()){
+    const r=await rasterPdf(list,d,d>=120?.75:.65,f=>busy(`목표 ${mb(tgt)}에 맞추는 중`,.7+(k+f)/4*.3,`페이지를 ${d}dpi 이미지로 바꾸는 중 (지금 ${mb(best.length)})`));
+    if(r.length<best.length){best=r;how=`페이지를 ${d}dpi 이미지로 바꿨어요. 글자 선택은 안 돼요`}
+    if(best.length<=tgt)return{bytes:best,before,how};
+  }
+  return{bytes:best,before,how,miss:tgt};
 }
 $('savePdf').onclick=()=>run(async()=>{const l=target();if(!l)return;
   const r=await makePdf(l);
   await saveFile(new Blob([r.bytes],{type:'application/pdf'}),base()+'.pdf');
-  if(+$('squeeze').value){const orig=[...new Set(l.map(p=>p.src))].reduce((a,s)=>a+srcs.get(s).bytes.length,0),before=Math.max(orig,r.before),pc=Math.round((1-r.bytes.length/before)*100);
+  if($('squeeze').value!=='0'){const orig=[...new Set(l.map(p=>p.src))].reduce((a,s)=>a+srcs.get(s).bytes.length,0),before=Math.max(orig,r.before),pc=Math.round((1-r.bytes.length/before)*100);
+    if(r.miss){setTimeout(()=>toast(`목표 ${mb(r.miss)}까지는 못 줄였어요. 가장 작게 만든 ${mb(r.bytes.length)}로 저장했어요. 파일을 나눠서 저장해 보세요`),400);return}
+    if(r.how){setTimeout(()=>toast(`${mb(before)} → ${mb(r.bytes.length)}. ${r.how}`),400);return}
     setTimeout(()=>toast(r.failed?'용량 줄이기에 실패해서 원래대로 저장했어요':pc>=3?`용량 ${mb(before)} → ${mb(r.bytes.length)} (${pc}% 줄었어요)`:`더 줄일 사진이 거의 없어서 ${mb(r.bytes.length)}로 저장했어요. 글자 위주 PDF는 많이 줄지 않아요`),400)}});
 
 $('saveSplit').onclick=()=>run(async()=>{const l=target();if(!l)return;const n=+$('splitN').value,parts=[];
